@@ -1,0 +1,23 @@
+export const ERROR_CODES = {
+  validation: 'VALIDATION_ERROR',
+  unauthorized: 'UNAUTHORIZED',
+  forbidden: 'FORBIDDEN',
+  emailAlreadyExists: 'EMAIL_ALREADY_EXISTS',
+  invalidCredentials: 'INVALID_CREDENTIALS',
+  accountDisabled: 'ACCOUNT_DISABLED',
+  invalidRefreshToken: 'INVALID_REFRESH_TOKEN',
+  emailNotConfigured: 'EMAIL_NOT_CONFIGURED',
+  passwordResetEmailFailed: 'PASSWORD_RESET_EMAIL_FAILED',
+  invalidPasswordResetToken: 'INVALID_PASSWORD_RESET_TOKEN',
+  invalidCurrentPassword: 'INVALID_CURRENT_PASSWORD',
+  passwordReuseNotAllowed: 'PASSWORD_REUSE_NOT_ALLOWED',
+  userNotFound: 'USER_NOT_FOUND',
+  businessListingNotFound: 'BUSINESS_LISTING_NOT_FOUND',
+  mosqueNotFound: 'MOSQUE_NOT_FOUND',
+  broadcastNotFound: 'BROADCAST_NOT_FOUND',
+  mosqueAlreadyExists: 'MOSQUE_ALREADY_EXISTS',
+  reviewAlreadyExists: 'REVIEW_ALREADY_EXISTS',
+  invalidUploadFile: 'INVALID_UPLOAD_FILE',
+  uploadTooLarge: 'UPLOAD_TOO_LARGE',
+  internalServerError: 'INTERNAL_SERVER_ERROR'
+};

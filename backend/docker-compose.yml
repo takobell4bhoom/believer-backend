@@ -1,0 +1,22 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: believer-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: believer
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - believer_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d believer"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
+
+volumes:
+  believer_pg_data:

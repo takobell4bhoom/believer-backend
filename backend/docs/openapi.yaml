@@ -1,0 +1,3291 @@
+openapi: 3.0.3
+info:
+  title: Believer Backend API
+  version: 1.8.0
+  description: Active REST API contract for auth, account recovery, account-governance settings actions, business listings, mosques, backend-owned mosque prayer times, mosque page content, mosque image uploads, bookmarks, notifications, and services.
+servers:
+  - url: http://localhost:4000
+
+tags:
+  - name: Health
+  - name: Auth
+  - name: Account Governance
+  - name: Business Listings
+  - name: Mosques
+  - name: Bookmarks
+  - name: Notifications
+  - name: Services
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    ErrorObject:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          example: VALIDATION_ERROR
+        message:
+          type: string
+          example: Invalid request payload
+        details:
+          type: array
+          items:
+            type: object
+
+    ErrorResponse:
+      type: object
+      required: [data, error, meta]
+      properties:
+        data:
+          nullable: true
+          example: null
+        error:
+          $ref: '#/components/schemas/ErrorObject'
+        meta:
+          type: object
+          example: {}
+
+    PaginationMeta:
+      type: object
+      required: [pagination]
+      properties:
+        pagination:
+          type: object
+          required: [page, limit, total, hasNext]
+          properties:
+            page:
+              type: integer
+              example: 1
+            limit:
+              type: integer
+              example: 20
+            total:
+              type: integer
+              example: 42
+            hasNext:
+              type: boolean
+              example: true
+
+    User:
+      type: object
+      required: [id, fullName, email, role]
+      properties:
+        id:
+          type: string
+          format: uuid
+        fullName:
+          type: string
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+          enum: [community, admin, super_admin]
+
+    TokenPair:
+      type: object
+      required: [accessToken, refreshToken]
+      properties:
+        accessToken:
+          type: string
+        refreshToken:
+          type: string
+
+    AuthPayload:
+      type: object
+      required: [user, tokens]
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+        tokens:
+          $ref: '#/components/schemas/TokenPair'
+
+    AuthEnvelope:
+      type: object
+      required: [data, error, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/AuthPayload'
+        error:
+          nullable: true
+          example: null
+        meta:
+          type: object
+          example: {}
+
+    RefreshPayload:
+      type: object
+      required: [accessToken, refreshToken]
+      properties:
+        accessToken:
+          type: string
+        refreshToken:
+          type: string
+
+    RefreshEnvelope:
+      type: object
+      required: [data, error, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/RefreshPayload'
+        error:
+          nullable: true
+          example: null
+        meta:
+          type: object
+          example: {}
+
+    UserEnvelope:
+      type: object
+      required: [data, error, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/User'
+        error:
+          nullable: true
+          example: null
+        meta:
+          type: object
+          example: {}
+
+    SuccessFlagEnvelope:
+      type: object
+      required: [data, error, meta]
+      properties:
+        data:
+          type: object
+          required: [success]
+          properties:
+            success:
+              type: boolean
+              example: true
+        error:
+          nullable: true
+          example: null
+        meta:
+          type: object
+          example: {}
+
+    SuccessMessageEnvelope:
+      type: object
+      required: [data, error, meta]
+      properties:
+        data:
+          type: object
+          required: [success, message]
+          properties:
+            success:
+              type: boolean
+              example: true
+            message:
+              type: string
+              example: If an account exists for that email, a password reset link has been sent.
+        error:
+          nullable: true
+          example: null
+        meta:
+          type: object
+          example: {}
+
+    SignupRequest:
+      type: object
+      required: [fullName, email, password]
+      properties:
+        fullName:
+          type: string
+          minLength: 2
+          maxLength: 120
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+          maxLength: 128
+        accountType:
+          type: string
+          enum: [community, admin]
+          default: community
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+          maxLength: 128
+
+    ForgotPasswordRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+
+    ResetPasswordRequest:
+      type: object
+      required: [token, newPassword]
+      properties:
+        token:
+          type: string
+          minLength: 32
+          maxLength: 512
+        newPassword:
+          type: string
+          minLength: 8
+          maxLength: 128
+
+    RefreshRequest:
+      type: object
+      required: [refreshToken]
+      properties:
+        refreshToken:
+          type: string
+
+    UserUpdateRequest:
+      type: object
+      required: [fullName]
+      properties:
+        fullName:
+          type: string
+          minLength: 2
+          maxLength: 120
+
+    ChangePasswordRequest:
+      type: object
+      required: [currentPassword, newPassword]
+      properties:
+        currentPassword:
+          type: string
+          minLength: 8
+          maxLength: 128
+        newPassword:
+          type: string
+          minLength: 8
+          maxLength: 128
+
+    DeactivateAccountRequest:
+      type: object
+      required: [confirmation]
+      properties:
+        confirmation:
+          type: string
+          enum: [DEACTIVATE]
+
+    SupportRequest:
+      type: object
+      required: [subject, message]
+      properties:
+        subject:
+          type: string
+          minLength: 4
+          maxLength: 120
+        message:
+          type: string
+          minLength: 10
+          maxLength: 4000
+
+    MosqueSuggestionRequest:
+      type: object
+      required: [mosqueName, city, country]
+      properties:
+        mosqueName:
+          type: string
+          minLength: 2
+          maxLength: 180
+        city:
+          type: string
+          minLength: 2
+          maxLength: 120
+        country:
+          type: string
+          minLength: 2
+          maxLength: 120
+        addressLine:
+          type: string
+          maxLength: 240
+        notes:
+          type: string
+          maxLength: 2000
+
+    Mosque:
+      type: object
+      required:
+        [id, name, city, country, latitude, longitude, facilities, averageRating, totalReviews, classTags, eventTags, isVerified, isBookmarked, canEdit]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        addressLine:
+          type: string
+          nullable: true
+        city:
+          type: string
+        state:
+          type: string
+          nullable: true
+        country:
+          type: string
+        postalCode:
+          type: string
+          nullable: true
+        latitude:
+          type: number
+        longitude:
+          type: number
+        imageUrl:
+          type: string
+          nullable: true
+        imageUrls:
+          type: array
+          maxItems: 10
+          items:
+            type: string
+            format: uri
+        sect:
+          type: string
+          nullable: true
+        contactName:
+          type: string
+          nullable: true
+        contactPhone:
+          type: string
+          nullable: true
+        contactEmail:
+          type: string
+          nullable: true
+        websiteUrl:
+          type: string
+          nullable: true
+        duhrTime:
+          type: string
+          nullable: true
+        asrTime:
+          type: string
+          nullable: true
+        facilities:
+          type: array
+          items:
+            type: string
+        averageRating:
+          type: number
+          example: 4.7
+        totalReviews:
+          type: integer
+          example: 18
+        classTags:
+          type: array
+          items:
+            type: string
+        eventTags:
+          type: array
+          items:
+            type: string
+        isVerified:
+          type: boolean
+        distanceKm:
+          type: number
+          nullable: true
+        isBookmarked:
+          type: boolean
+        canEdit:
+          type: boolean
+
+    MosqueListPayload:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Mosque'
+
+    MosqueListEnvelope:
+      type: object
+      required: [data, error, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/MosqueListPayload'
+        error:
+          nullable: true
+          example: null
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+
+    MosqueEnvelope:
+      type: object
+      required: [data, error, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/Mosque'
+        error:
+          nullable: true
+          example: null
+        meta:
+          type: object
+          example: {}
+
+    MosqueImageUploadPayload:
+      type: object
+      required: [imageUrl, imagePath, fileName]
+      properties:
+        imageUrl:
+          type: string
+          format: uri
+          example: http://localhost:4000/uploads/mosques/1711900000000-uuid.jpg
+        imagePath:
+          type: string
+          example: /uploads/mosques/1711900000000-uuid.jpg
+        fileName:
+          type: string
+          example: 1711900000000-uuid.jpg
+
+    MosqueImageUploadEnvelope:
+      type: object
+      required: [data, error, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/MosqueImageUploadPayload'
+        error:
+          nullable: true
+          example: null
+        meta:
+          type: object
+          example: {}
+
+    MosqueCreateRequest:
+      type: object
+      required: [name, addressLine, city, state, country, latitude, longitude]
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 180
+        addressLine:
+          type: string
+          minLength: 3
+          maxLength: 240
+        city:
+          type: string
+          minLength: 2
+          maxLength: 120
+        state:
+          type: string
+          minLength: 2
+          maxLength: 120
+        country:
+          type: string
+          minLength: 2
+          maxLength: 120
+          default: India
+        postalCode:
+          type: string
+          maxLength: 20
+        latitude:
+          type: number
+          minimum: -90
+          maximum: 90
+        longitude:
+          type: number
+          minimum: -180
+          maximum: 180
+        contactName:
+          type: string
+          maxLength: 160
+        contactPhone:
+          type: string
+          maxLength: 40
+        contactEmail:
+          type: string
+          format: email
+        websiteUrl:
+          type: string
+          format: uri
+        imageUrl:
+          type: string
+          format: uri
+          description: Existing remote image URL or the URL returned by the mosque upload route
+        imageUrls:
+          type: array
+          maxItems: 10
+          description: Ordered mosque gallery images. The first item is the primary cover image.
+          items:
+            type: string
+            format: uri
+        sect:
+          type: string
+          enum: [Sunni, Shia, Mixed, Community]
+        duhrTime:
+          type: string
+          maxLength: 32
+        asrTime:
+          type: string
+          maxLength: 32
+        prayerTimeConfig:
+          $ref: '#/components/schemas/PrayerTimeConfigWritePayload'
+        facilities:
+          type: array
+          maxItems: 20
+          items:
+            type: string
+        content:
+          $ref: '#/components/schemas/MosqueContentWritePayload'
+
+    PrayerTimeAdjustments:
+      type: object
+      properties:
+        fajr:
+          type: integer
+          minimum: -59
+          maximum: 59
+        sunrise:
+          type: integer
+          minimum: -59
+          maximum: 59
+        dhuhr:
+          type: integer
+          minimum: -59
+          maximum: 59
+        asr:
+          type: integer
+          minimum: -59
+          maximum: 59
+        maghrib:
+          type: integer
+          minimum: -59
+          maximum: 59
+        isha:
+          type: integer
+          minimum: -59
+          maximum: 59
+
+    PrayerTimeConfigWritePayload:
+      type: object
+      required: [enabled, calculationMethod, school, adjustments]
+      properties:
+        enabled:
+          type: boolean
+        calculationMethod:
+          type: integer
+          minimum: 0
+          maximum: 99
+        school:
+          type: string
+          enum: [standard, hanafi]
+        adjustments:
+          $ref: '#/components/schemas/PrayerTimeAdjustments'
+
+    PrayerTimeCalculationMethod:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+
+    PrayerTimeSchool:
+      type: object
+      required: [value, label]
+      properties:
+        value:
+          type: string
+          enum: [standard, hanafi]
+        label:
+          type: string
+
+    PrayerTimeConfiguration:
+      type: object
+      required:
+        [enabled, latitude, longitude, calculationMethod, school, adjustments]
+      properties:
+        enabled:
+          type: boolean
+        latitude:
+          type: number
+        longitude:
+          type: number
+        calculationMethod:
+          $ref: '#/components/schemas/PrayerTimeCalculationMethod'
+        school:
+          $ref: '#/components/schemas/PrayerTimeSchool'
+        adjustments:
+          $ref: '#/components/schemas/PrayerTimeAdjustments'
+
+    PrayerTimeDayPayload:
+      type: object
+      required:
+        [mosqueId, date, status, isConfigured, isAvailable, source, nextPrayer, nextPrayerTime]
+      properties:
+        mosqueId:
+          type: string
+          format: uuid
+        date:
+          type: string
+          format: date
+        status:
+          type: string
+          enum: [ready, not_configured, disabled, temporarily_unavailable]
+        isConfigured:
+          type: boolean
+        isAvailable:
+          type: boolean
+        source:
+          type: string
+          enum: [aladhan, cache, none]
+        unavailableReason:
+          type: string
+          nullable: true
+        timezone:
+          type: string
+          nullable: true
+        configuration:
+          allOf:
+            - $ref: '#/components/schemas/PrayerTimeConfiguration'
+          nullable: true
+        timings:
+          type: object
+          nullable: true
+          properties:
+            fajr:
+              type: string
+            sunrise:
+              type: string
+            dhuhr:
+              type: string
+            asr:
+              type: string
+            maghrib:
+              type: string
+            isha:
+              type: string
+        nextPrayer:
+          type: string
+        nextPrayerTime:
+          type: string
+        cachedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    MosqueAbout:
+      type: object
+      properties:
+        title:
+          type: string
+        body:
+          type: string
+
+    MosqueContentItem:
+      type: object
+      required: [id, title, schedule, posterLabel]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        schedule:
+          type: string
+        posterLabel:
+          type: string
+        location:
+          type: string
+        description:
+          type: string
+
+    MosqueConnectLink:
+      type: object
+      required: [id, type, label, value]
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          example: instagram
+        label:
+          type: string
+        value:
+          type: string
+
+    MosqueContentPayload:
+      type: object
+      required: [events, classes, connect]
+      properties:
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/MosqueContentItem'
+        classes:
+          type: array
+          items:
+            $ref: '#/components/schemas/MosqueContentItem'
+        connect:
+          type: array
+          items:
+            $ref: '#/components/schemas/MosqueConnectLink'
+        about:
+          $ref: '#/components/schemas/MosqueAbout'
+
+    MosqueContentWritePayload:
+      type: object
+      properties:
+        events:
+          type: array
+          maxItems: 12
+          items:
+            $ref: '#/components/schemas/MosqueContentItem'
+        classes:
+          type: array
+          maxItems: 12
+          items:
+            $ref: '#/components/schemas/MosqueContentItem'
+        connect:
+          type: array
+          maxItems: 12
+          items:
+            $ref: '#/components/schemas/MosqueConnectLink'
+        about:
+          $ref: '#/components/schemas/MosqueAbout'
+
+    MosqueContentEnvelope:
+      type: object
+      required: [data, error, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/MosqueContentPayload'
+        error:
+          nullable: true
+          example: null
+        meta:
+          type: object
+          example: {}
+
+    MosqueUpdateRequest:
+      allOf:
+        - $ref: '#/components/schemas/MosqueCreateRequest'
+        - type: object
+          properties:
+            content:
+              $ref: '#/components/schemas/MosqueContentWritePayload'
+
+    MosqueImageUploadRequest:
+      type: object
+      required: [file]
+      properties:
+        file:
+          type: string
+          format: binary
+
+    MosqueAdminUpdatePayload:
+      type: object
+      required: [mosque, content]
+      properties:
+        mosque:
+          $ref: '#/components/schemas/Mosque'
+        content:
+          $ref: '#/components/schemas/MosqueContentPayload'
+
+    MosqueAdminUpdateEnvelope:
+      type: object
+      required: [data, error, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/MosqueAdminUpdatePayload'
+        error:
+          nullable: true
+          example: null
+        meta:
+          type: object
+          example: {}
+
+    PrayerTimeDayEnvelope:
+      type: object
+      required: [data, error, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/PrayerTimeDayPayload'
+        error:
+          nullable: true
+          example: null
+        meta:
+          type: object
+          example: {}
+
+    ReviewRequest:
+      type: object
+      required: [rating]
+      properties:
+        mosqueId:
+          type: string
+          format: uuid
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+        comments:
+          type: string
+          maxLength: 250
+
+    ReviewPayload:
+      type: object
+      required: [id, mosqueId, rating, comments, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        mosqueId:
+          type: string
+          format: uuid
+        rating:
+          type: integer
+        comments:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    ReviewEnvelope:
+      type: object
+      required: [data, error, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/ReviewPayload'
+        error:
+          nullable: true
+          example: null
+        meta:
+          type: object
+          example: {}
+
+    ReviewListItem:
+      type: object
+      required: [id, userName, rating, comment, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        userName:
+          type: string
+        rating:
+          type: number
+        comment:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    ReviewListSummary:
+      type: object
+      required: [averageRating, totalReviews]
+      properties:
+        averageRating:
+          type: number
+        totalReviews:
+          type: integer
+
+    ReviewListPayload:
+      type: object
+      required: [items, summary]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReviewListItem'
+        summary:
+          $ref: '#/components/schemas/ReviewListSummary'
+
+    ReviewListEnvelope:
+      type: object
+      required: [data, error, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/ReviewListPayload'
+        error:
+          nullable: true
+          example: null
+        meta:
+          type: object
+          example: {}
+
+    BroadcastMessageItem:
+      type: object
+      required: [id, title, description, publishedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+        publishedAt:
+          type: string
+          format: date-time
+
+    BroadcastMessageListPayload:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/BroadcastMessageItem'
+
+    BroadcastMessageListEnvelope:
+      type: object
+      required: [data, error, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/BroadcastMessageListPayload'
+        error:
+          nullable: true
+          example: null
+        meta:
+          type: object
+          example: {}
+
+    BroadcastPublishRequest:
+      type: object
+      required: [title, message]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 180
+        message:
+          type: string
+          minLength: 1
+          maxLength: 2000
+
+    BroadcastMessageEnvelope:
+      type: object
+      required: [data, error, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/BroadcastMessageItem'
+        error:
+          nullable: true
+          example: null
+        meta:
+          type: object
+          example: {}
+
+    BookmarkCreateRequest:
+      type: object
+      required: [mosqueId]
+      properties:
+        mosqueId:
+          type: string
+          format: uuid
+
+    BookmarkCreatePayload:
+      type: object
+      required: [mosqueId, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+          nullable: true
+        mosqueId:
+          type: string
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+          nullable: true
+        status:
+          type: string
+          enum: [created, already_bookmarked]
+
+    BookmarkCreateEnvelope:
+      type: object
+      required: [data, error, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/BookmarkCreatePayload'
+        error:
+          nullable: true
+          example: null
+        meta:
+          type: object
+          example: {}
+
+    BookmarkListItem:
+      type: object
+      required:
+        [id, name, city, country, latitude, longitude, facilities, isVerified, bookmarkedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        addressLine:
+          type: string
+          nullable: true
+        city:
+          type: string
+        state:
+          type: string
+          nullable: true
+        country:
+          type: string
+        postalCode:
+          type: string
+          nullable: true
+        latitude:
+          type: number
+        longitude:
+          type: number
+        facilities:
+          type: array
+          items:
+            type: string
+        isVerified:
+          type: boolean
+        bookmarkedAt:
+          type: string
+          format: date-time
+
+    BookmarkListPayload:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/BookmarkListItem'
+
+    BookmarkListEnvelope:
+      type: object
+      required: [data, error, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/BookmarkListPayload'
+        error:
+          nullable: true
+          example: null
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+
+    NotificationSetting:
+      type: object
+      required: [title, description, isEnabled]
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        isEnabled:
+          type: boolean
+
+    NotificationSettingsRequest:
+      type: object
+      required: [mosqueId, settings]
+      properties:
+        mosqueId:
+          type: string
+          format: uuid
+        settings:
+          type: array
+          maxItems: 20
+          items:
+            $ref: '#/components/schemas/NotificationSetting'
+
+    NotificationSettingsPayload:
+      type: object
+      required: [success, settings]
+      properties:
+        success:
+          type: boolean
+        settings:
+          type: array
+          items:
+            $ref: '#/components/schemas/NotificationSetting'
+
+    NotificationSettingsEnvelope:
+      type: object
+      required: [data, error, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/NotificationSettingsPayload'
+        error:
+          nullable: true
+          example: null
+        meta:
+          type: object
+          example: {}
+
+    NotificationSettingsReadPayload:
+      type: object
+      required: [mosqueId, settings]
+      properties:
+        mosqueId:
+          type: string
+          format: uuid
+        settings:
+          type: array
+          items:
+            $ref: '#/components/schemas/NotificationSetting'
+
+    NotificationSettingsReadEnvelope:
+      type: object
+      required: [data, error, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/NotificationSettingsReadPayload'
+        error:
+          nullable: true
+          example: null
+        meta:
+          type: object
+          example: {}
+
+    NotificationMosque:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+
+    NotificationMosqueListPayload:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/NotificationMosque'
+
+    NotificationMosqueListEnvelope:
+      type: object
+      required: [data, error, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/NotificationMosqueListPayload'
+        error:
+          nullable: true
+          example: null
+        meta:
+          type: object
+          example: {}
+
+    BusinessListingStatus:
+      type: string
+      enum: [draft, under_review, live, rejected]
+
+    BusinessListingSubmitter:
+      type: object
+      required: [id, fullName, email]
+      properties:
+        id:
+          type: string
+          format: uuid
+        fullName:
+          type: string
+        email:
+          type: string
+          format: email
+
+    TimeOfDay:
+      type: object
+      required: [hour, minute]
+      properties:
+        hour:
+          type: integer
+          minimum: 0
+          maximum: 23
+        minute:
+          type: integer
+          minimum: 0
+          maximum: 59
+
+    BusinessListingLogo:
+      type: object
+      properties:
+        fileName:
+          type: string
+          nullable: true
+        bytesBase64:
+          type: string
+          nullable: true
+        contentType:
+          type: string
+          nullable: true
+        tileBackgroundColor:
+          type: integer
+          example: 4293512350
+
+    BusinessListingSelectedType:
+      type: object
+      required: [groupId, groupLabel, itemId, itemLabel]
+      properties:
+        groupId:
+          type: string
+        groupLabel:
+          type: string
+        itemId:
+          type: string
+        itemLabel:
+          type: string
+
+    BusinessListingBasicDetails:
+      type: object
+      required: [businessName, logo, selectedType, tagline, description]
+      properties:
+        businessName:
+          type: string
+          maxLength: 180
+        logo:
+          allOf:
+            - $ref: '#/components/schemas/BusinessListingLogo'
+          nullable: true
+        selectedType:
+          allOf:
+            - $ref: '#/components/schemas/BusinessListingSelectedType'
+          nullable: true
+        tagline:
+          type: string
+          maxLength: 160
+        description:
+          type: string
+          maxLength: 4000
+
+    BusinessListingBasicDraftDetails:
+      type: object
+      properties:
+        businessName:
+          type: string
+          maxLength: 180
+        logo:
+          allOf:
+            - $ref: '#/components/schemas/BusinessListingLogo'
+          nullable: true
+        selectedType:
+          allOf:
+            - $ref: '#/components/schemas/BusinessListingSelectedType'
+          nullable: true
+        tagline:
+          type: string
+          maxLength: 160
+        description:
+          type: string
+          maxLength: 4000
+
+    BusinessListingContactDetails:
+      type: object
+      required:
+        [
+          businessEmail,
+          phone,
+          whatsapp,
+          openingTime,
+          closingTime,
+          instagramUrl,
+          facebookUrl,
+          websiteUrl,
+          address,
+          zipCode,
+          city,
+          onlineOnly
+        ]
+      properties:
+        businessEmail:
+          type: string
+          maxLength: 254
+        phone:
+          type: string
+          maxLength: 40
+        whatsapp:
+          type: string
+          maxLength: 40
+        openingTime:
+          allOf:
+            - $ref: '#/components/schemas/TimeOfDay'
+          nullable: true
+        closingTime:
+          allOf:
+            - $ref: '#/components/schemas/TimeOfDay'
+          nullable: true
+        instagramUrl:
+          type: string
+          maxLength: 240
+        facebookUrl:
+          type: string
+          maxLength: 240
+        websiteUrl:
+          type: string
+          maxLength: 240
+        address:
+          type: string
+          maxLength: 240
+        zipCode:
+          type: string
+          maxLength: 20
+        city:
+          type: string
+          maxLength: 120
+        onlineOnly:
+          type: boolean
+
+    BusinessListingContactDraftDetails:
+      type: object
+      properties:
+        businessEmail:
+          type: string
+          maxLength: 254
+        phone:
+          type: string
+          maxLength: 40
+        whatsapp:
+          type: string
+          maxLength: 40
+        openingTime:
+          allOf:
+            - $ref: '#/components/schemas/TimeOfDay'
+          nullable: true
+        closingTime:
+          allOf:
+            - $ref: '#/components/schemas/TimeOfDay'
+          nullable: true
+        instagramUrl:
+          type: string
+          maxLength: 240
+        facebookUrl:
+          type: string
+          maxLength: 240
+        websiteUrl:
+          type: string
+          maxLength: 240
+        address:
+          type: string
+          maxLength: 240
+        zipCode:
+          type: string
+          maxLength: 20
+        city:
+          type: string
+          maxLength: 120
+        onlineOnly:
+          type: boolean
+
+    BusinessListingDraftRequest:
+      type: object
+      required: [basicDetails, contactDetails]
+      properties:
+        basicDetails:
+          $ref: '#/components/schemas/BusinessListingBasicDraftDetails'
+        contactDetails:
+          $ref: '#/components/schemas/BusinessListingContactDraftDetails'
+
+    BusinessListingSubmissionRequest:
+      type: object
+      required: [basicDetails, contactDetails]
+      properties:
+        basicDetails:
+          $ref: '#/components/schemas/BusinessListingBasicDetails'
+        contactDetails:
+          $ref: '#/components/schemas/BusinessListingContactDetails'
+
+    BusinessListing:
+      type: object
+      required:
+        [
+          id,
+          status,
+          basicDetails,
+          contactDetails,
+          submittedAt,
+          publishedAt,
+          reviewedBy,
+          reviewedAt,
+          rejectionReason,
+          createdAt,
+          lastUpdatedAt
+        ]
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          $ref: '#/components/schemas/BusinessListingStatus'
+        basicDetails:
+          $ref: '#/components/schemas/BusinessListingBasicDetails'
+        contactDetails:
+          $ref: '#/components/schemas/BusinessListingContactDetails'
+        submittedAt:
+          type: string
+          format: date-time
+          nullable: true
+        publishedAt:
+          type: string
+          format: date-time
+          nullable: true
+        reviewedBy:
+          type: string
+          format: uuid
+          nullable: true
+        reviewedAt:
+          type: string
+          format: date-time
+          nullable: true
+        rejectionReason:
+          type: string
+          nullable: true
+        submitter:
+          allOf:
+            - $ref: '#/components/schemas/BusinessListingSubmitter'
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+          nullable: true
+        lastUpdatedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    BusinessListingPayload:
+      type: object
+      required: [listing]
+      properties:
+        listing:
+          allOf:
+            - $ref: '#/components/schemas/BusinessListing'
+          nullable: true
+
+    BusinessListingEnvelope:
+      type: object
+      required: [data, error, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/BusinessListingPayload'
+        error:
+          nullable: true
+          example: null
+        meta:
+          type: object
+          example: {}
+
+    BusinessListingListPayload:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/BusinessListing'
+
+    BusinessListingListEnvelope:
+      type: object
+      required: [data, error, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/BusinessListingListPayload'
+        error:
+          nullable: true
+          example: null
+        meta:
+          type: object
+          example: {}
+
+    BusinessListingRejectionRequest:
+      type: object
+      required: [rejectionReason]
+      properties:
+        rejectionReason:
+          type: string
+          minLength: 3
+          maxLength: 1000
+
+    Service:
+      type: object
+      required:
+        [id, category, name, location, priceRange, deliveryInfo, rating, tags, servicesOffered, specialties]
+      properties:
+        id:
+          type: string
+        category:
+          type: string
+        name:
+          type: string
+        location:
+          type: string
+        priceRange:
+          type: string
+        deliveryInfo:
+          type: string
+        rating:
+          type: number
+        addressLine1:
+          type: string
+        addressLine2:
+          type: string
+        phoneNumber:
+          type: string
+          nullable: true
+        whatsappNumber:
+          type: string
+          nullable: true
+        instagramHandle:
+          type: string
+          nullable: true
+        facebookPage:
+          type: string
+          nullable: true
+        websiteUrl:
+          type: string
+          nullable: true
+        description:
+          type: string
+        hoursLabel:
+          type: string
+        savedCount:
+          type: integer
+        reviewCount:
+          type: integer
+        tags:
+          type: array
+          items:
+            type: string
+        servicesOffered:
+          type: array
+          items:
+            type: string
+        specialties:
+          type: array
+          items:
+            type: string
+
+    ServicesEnvelope:
+      type: object
+      required: [data, error, meta]
+      properties:
+        data:
+          type: object
+          required: [services]
+          properties:
+            services:
+              type: array
+              items:
+                $ref: '#/components/schemas/Service'
+        error:
+          nullable: true
+          example: null
+        meta:
+          type: object
+          example: {}
+
+paths:
+  /:
+    get:
+      tags: [Health]
+      summary: Root API metadata
+      responses:
+        '200':
+          description: API metadata
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  name:
+                    type: string
+                  status:
+                    type: string
+                  version:
+                    type: string
+                  docs:
+                    type: object
+                    properties:
+                      openapi:
+                        type: string
+                      postmanCollection:
+                        type: string
+
+  /health:
+    get:
+      tags: [Health]
+      summary: Health check
+      responses:
+        '200':
+          description: Service healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                example:
+                  status: ok
+
+  /api/v1/auth/signup:
+    post:
+      tags: [Auth]
+      summary: Create account
+      description: Community signup is the default. Mosque admin signup is also supported through the same full-name, email, and password flow by setting `accountType=admin`. After a successful signup, the backend attempts a lightweight welcome email without blocking account creation if delivery fails.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignupRequest'
+      responses:
+        '201':
+          description: Account created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthEnvelope'
+        '400':
+          description: Invalid payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Email exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/v1/auth/login:
+    post:
+      tags: [Auth]
+      summary: Login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthEnvelope'
+        '400':
+          description: Invalid payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Account disabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/auth/forgot-password:
+    post:
+      tags: [Auth]
+      summary: Request a password reset email
+      description: Returns the same success payload whether or not the email belongs to an active account. Requires configured transactional email and sends a one-time reset link through the backend email service.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ForgotPasswordRequest'
+      responses:
+        '200':
+          description: Reset email accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessMessageEnvelope'
+        '400':
+          description: Invalid payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: Email provider failed to deliver the reset email
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Password reset email is not configured
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/auth/reset-password:
+    post:
+      tags: [Auth]
+      summary: Reset password with a one-time token
+      description: Consumes a hashed single-use reset token, updates the password, and revokes previously issued refresh-token state for the account.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResetPasswordRequest'
+      responses:
+        '200':
+          description: Password reset complete
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessFlagEnvelope'
+        '400':
+          description: Invalid or expired reset token, or malformed payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Account disabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Rotate refresh token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        '200':
+          description: Token refreshed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RefreshEnvelope'
+        '400':
+          description: Invalid payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Invalid refresh token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Account disabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/auth/me:
+    get:
+      tags: [Auth]
+      summary: Get current user profile
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserEnvelope'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      tags: [Auth]
+      summary: Update current user profile
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserUpdateRequest'
+      responses:
+        '200':
+          description: Updated current user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserEnvelope'
+        '400':
+          description: Invalid profile payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/auth/change-password:
+    post:
+      tags: [Auth]
+      summary: Change password for the authenticated user
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+      responses:
+        '200':
+          description: Password changed and tokens rotated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthEnvelope'
+        '400':
+          description: Invalid payload or wrong current password
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Account disabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Revoke refresh token for current user
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        '200':
+          description: Logout success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessFlagEnvelope'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/auth/deactivate:
+    post:
+      tags: [Auth]
+      summary: Deactivate the authenticated account
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeactivateAccountRequest'
+      responses:
+        '200':
+          description: Account deactivated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessMessageEnvelope'
+        '400':
+          description: Invalid payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Account disabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/account/support-requests:
+    post:
+      tags: [Account Governance]
+      summary: Submit a support/contact request for the authenticated user
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SupportRequest'
+      responses:
+        '201':
+          description: Support request stored
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessMessageEnvelope'
+        '400':
+          description: Invalid payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Account disabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/account/mosque-suggestions:
+    post:
+      tags: [Account Governance]
+      summary: Submit a mosque suggestion for the authenticated user
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MosqueSuggestionRequest'
+      responses:
+        '201':
+          description: Mosque suggestion stored
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessMessageEnvelope'
+        '400':
+          description: Invalid payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Account disabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/mosques:
+    post:
+      tags: [Mosques]
+      summary: Create a mosque as an admin user
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MosqueCreateRequest'
+      responses:
+        '201':
+          description: Mosque created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MosqueEnvelope'
+        '400':
+          description: Invalid payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Admin access required or mosque not owned by current admin
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Mosque already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    get:
+      tags: [Mosques]
+      summary: List mosques with filters and pagination
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - name: search
+          in: query
+          schema: { type: string }
+        - name: city
+          in: query
+          schema: { type: string }
+        - name: facilities
+          in: query
+          schema: { type: string }
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [name, recent, distance]
+            default: recent
+        - name: latitude
+          in: query
+          schema: { type: number, minimum: -90, maximum: 90 }
+        - name: longitude
+          in: query
+          schema: { type: number, minimum: -180, maximum: 180 }
+        - name: radius
+          in: query
+          schema: { type: number, minimum: 0.1, maximum: 50, default: 10 }
+        - name: lat
+          in: query
+          schema: { type: number, minimum: -90, maximum: 90 }
+        - name: lng
+          in: query
+          schema: { type: number, minimum: -180, maximum: 180 }
+        - name: radiusKm
+          in: query
+          schema: { type: number, minimum: 0.1, maximum: 50 }
+      responses:
+        '200':
+          description: Mosque list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MosqueListEnvelope'
+        '400':
+          description: Invalid query
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/mosques/upload-image:
+    post:
+      tags: [Mosques]
+      summary: Upload a mosque image as an admin user
+      description: Stores the uploaded image on backend-local disk for MVP use and returns a reusable static image URL for mosque create/update payloads.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/MosqueImageUploadRequest'
+      responses:
+        '201':
+          description: Image uploaded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MosqueImageUploadEnvelope'
+        '400':
+          description: Invalid or missing file
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Admin access required or mosque not owned by current admin
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '413':
+          description: Upload too large
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/mosques/nearby:
+    get:
+      tags: [Mosques]
+      summary: Nearby mosques by coordinates
+      parameters:
+        - name: latitude
+          in: query
+          required: true
+          schema: { type: number, minimum: -90, maximum: 90 }
+        - name: longitude
+          in: query
+          required: true
+          schema: { type: number, minimum: -180, maximum: 180 }
+        - name: radius
+          in: query
+          schema: { type: number, minimum: 0.1, maximum: 50, default: 5 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - name: lat
+          in: query
+          schema: { type: number, minimum: -90, maximum: 90 }
+        - name: lng
+          in: query
+          schema: { type: number, minimum: -180, maximum: 180 }
+        - name: radiusKm
+          in: query
+          schema: { type: number, minimum: 0.1, maximum: 50 }
+      responses:
+        '200':
+          description: Nearby results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MosqueListEnvelope'
+        '400':
+          description: Invalid coordinates
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/mosques/location-resolve:
+    get:
+      tags: [Mosques]
+      summary: Resolve the manual-location fallback query into coordinates
+      parameters:
+        - name: query
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 2
+            maxLength: 200
+      responses:
+        '200':
+          description: Location resolution result
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, error, meta]
+                properties:
+                  data:
+                    type: object
+                    required: [label, latitude, longitude, provider, resolved]
+                    properties:
+                      label:
+                        type: string
+                        nullable: false
+                      latitude:
+                        type: number
+                        nullable: true
+                      longitude:
+                        type: number
+                        nullable: true
+                      provider:
+                        type: string
+                        nullable: true
+                      resolved:
+                        type: boolean
+                  error:
+                    nullable: true
+                    example: null
+                  meta:
+                    type: object
+                    example: {}
+        '400':
+          description: Invalid lookup params
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Location lookup unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/mosques/location-reverse:
+    get:
+      tags: [Mosques]
+      summary: Reverse-geocode current-location coordinates into a display label
+      parameters:
+        - name: latitude
+          in: query
+          required: true
+          schema: { type: number, minimum: -90, maximum: 90 }
+        - name: longitude
+          in: query
+          required: true
+          schema: { type: number, minimum: -180, maximum: 180 }
+      responses:
+        '200':
+          description: Reverse-geocode result
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, error, meta]
+                properties:
+                  data:
+                    type: object
+                    required: [label, latitude, longitude, provider, resolved]
+                    properties:
+                      label:
+                        type: string
+                        nullable: true
+                      latitude:
+                        type: number
+                      longitude:
+                        type: number
+                      provider:
+                        type: string
+                        nullable: true
+                      resolved:
+                        type: boolean
+                  error:
+                    nullable: true
+                    example: null
+                  meta:
+                    type: object
+                    example: {}
+        '400':
+          description: Invalid lookup params
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Location lookup unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/mosques/{id}:
+    get:
+      tags: [Mosques]
+      summary: Mosque details
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Mosque detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MosqueEnvelope'
+        '400':
+          description: Invalid id
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Mosque not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      tags: [Mosques]
+      summary: Update mosque details and persisted page content
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MosqueUpdateRequest'
+      responses:
+        '200':
+          description: Mosque and page content updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MosqueAdminUpdateEnvelope'
+        '400':
+          description: Invalid payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Admin access required or mosque not owned by current admin
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Mosque not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Duplicate mosque identity
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/mosques/mine:
+    get:
+      tags: [Mosques]
+      summary: List mosques owned by the current admin
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Owned mosque list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MosqueListEnvelope'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/mosques/review:
+    post:
+      tags: [Mosques]
+      summary: Create mosque review using body mosqueId
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewRequest'
+      responses:
+        '201':
+          description: Review created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewEnvelope'
+        '400':
+          description: Invalid payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Mosque not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Review already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/mosques/{id}/broadcasts:
+    get:
+      tags: [Mosques]
+      summary: List persisted broadcast messages for a mosque
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Broadcast message list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BroadcastMessageListEnvelope'
+        '400':
+          description: Invalid mosque id
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    post:
+      tags: [Mosques]
+      summary: Publish a persisted broadcast message for a mosque
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BroadcastPublishRequest'
+      responses:
+        '201':
+          description: Broadcast message published
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BroadcastMessageEnvelope'
+        '400':
+          description: Invalid mosque id or broadcast payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Mosque not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/mosques/{id}/broadcasts/{broadcastId}:
+    delete:
+      tags: [Mosques]
+      summary: Remove a persisted broadcast message for a mosque
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: broadcastId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Broadcast message removed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessFlagEnvelope'
+        '400':
+          description: Invalid route params
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Mosque or broadcast not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/mosques/{id}/content:
+    get:
+      tags: [Mosques]
+      summary: List persisted mosque page content for events, classes, connect, and about copy
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Mosque page content
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MosqueContentEnvelope'
+        '400':
+          description: Invalid mosque id
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Mosque not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/mosques/{id}/prayer-times:
+    get:
+      tags: [Mosques]
+      summary: Read backend-owned mosque prayer times for one date
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: date
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Prayer times payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PrayerTimeDayEnvelope'
+        '400':
+          description: Invalid mosque id or date
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Mosque not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/mosques/{id}/reviews:
+    get:
+      tags: [Mosques]
+      summary: List persisted reviews for a mosque
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Review list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewListEnvelope'
+        '400':
+          description: Invalid mosque id
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Mosque not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    post:
+      tags: [Mosques]
+      summary: Create mosque review using route param id
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewRequest'
+      responses:
+        '201':
+          description: Review created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewEnvelope'
+        '400':
+          description: Invalid payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Mosque not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Review already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/bookmarks:
+    get:
+      tags: [Bookmarks]
+      summary: List user bookmarks
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        '200':
+          description: Bookmark list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookmarkListEnvelope'
+        '400':
+          description: Invalid query
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    post:
+      tags: [Bookmarks]
+      summary: Save mosque bookmark
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BookmarkCreateRequest'
+      responses:
+        '200':
+          description: Already bookmarked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookmarkCreateEnvelope'
+        '201':
+          description: Bookmark created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookmarkCreateEnvelope'
+        '400':
+          description: Invalid payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Mosque not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/bookmarks/{mosqueId}:
+    delete:
+      tags: [Bookmarks]
+      summary: Remove bookmark
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: mosqueId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Bookmark removed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessFlagEnvelope'
+        '400':
+          description: Invalid id
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/notifications/mosques:
+    get:
+      tags: [Notifications]
+      summary: List the current user's notification-enabled mosques for Notifications and Home
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Notification-enabled mosque list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationMosqueListEnvelope'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/notifications/settings:
+    get:
+      tags: [Notifications]
+      summary: Read mosque notification settings for current user
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: mosqueId
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Settings loaded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationSettingsReadEnvelope'
+        '400':
+          description: Invalid query
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Mosque not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    put:
+      tags: [Notifications]
+      summary: Replace mosque notification settings for current user
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationSettingsRequest'
+      responses:
+        '200':
+          description: Settings saved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationSettingsEnvelope'
+        '400':
+          description: Invalid payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Mosque not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/services:
+    get:
+      tags: [Services]
+      summary: List service cards for a category
+      description: Returns the public services feed for a supported category. Only approved business listings whose moderation status is `live` appear here; `draft`, `under_review`, and `rejected` listings are never exposed. Supported category aliases are normalized onto the public feed taxonomy. Today the supported public categories are `Halal Food` and `Islamic Books`; supported aliases include food-specific labels such as `Catering Services` and the book-specific alias `Books & Stationery`. Approved listings outside those explicit mappings remain private to moderation/business-listing flows and unsupported public category queries return `400`. The route currently supports category plus filter chips only; there is no keyword search contract yet.
+      parameters:
+        - name: category
+          in: query
+          required: true
+          description: Public services category or supported alias. Unsupported categories fail validation.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 120
+        - name: filters
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Service list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServicesEnvelope'
+        '400':
+          description: Invalid query
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/business-listings/draft:
+    put:
+      tags: [Business Listings]
+      summary: Create or update the current user's business listing draft
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BusinessListingDraftRequest'
+      responses:
+        '200':
+          description: Draft updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessListingEnvelope'
+        '201':
+          description: Draft created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessListingEnvelope'
+        '400':
+          description: Invalid draft payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/business-listings/submit:
+    post:
+      tags: [Business Listings]
+      summary: Submit the current user's business listing for review
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BusinessListingSubmissionRequest'
+      responses:
+        '202':
+          description: Listing submitted for review
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessListingEnvelope'
+        '400':
+          description: Invalid submission payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/business-listings/me:
+    get:
+      tags: [Business Listings]
+      summary: Read the current user's latest business listing status
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Latest listing status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessListingEnvelope'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/admin/business-listings/pending:
+    get:
+      tags: [Business Listings]
+      summary: List business listings waiting for super-admin moderation
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Pending business listings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessListingListEnvelope'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Super-admin access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/admin/business-listings/{id}:
+    get:
+      tags: [Business Listings]
+      summary: Read one business listing for super-admin moderation
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Business listing detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessListingEnvelope'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Super-admin access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Business listing not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/admin/business-listings/{id}/approve:
+    post:
+      tags: [Business Listings]
+      summary: Approve a business listing as a super admin
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Business listing approved and published
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessListingEnvelope'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Super-admin access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Business listing not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Listing is no longer under review
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/admin/business-listings/{id}/reject:
+    post:
+      tags: [Business Listings]
+      summary: Reject a business listing as a super admin
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BusinessListingRejectionRequest'
+      responses:
+        '200':
+          description: Business listing rejected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessListingEnvelope'
+        '400':
+          description: Invalid rejection payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Super-admin access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Business listing not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Listing is no longer under review
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'

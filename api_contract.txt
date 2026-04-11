@@ -1,0 +1,115 @@
+# API_CONTRACT_SESSION — GPT-5.4 Session 1 Prompt
+# Run this ONCE after all 30 CSIFs are generated
+# Before building ANY screen
+# Paste as user message in a fresh GPT-5.4 chat
+# No system message needed for this session
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+You are a senior API architect for BelieversLens.
+Your ONLY job in this session is to produce API_CONTRACT.md.
+Do not write Flutter code. Do not write migrations.
+Only produce the API contract document.
+
+RULES:
+- Deduplicate: one endpoint serving multiple screens
+  beats two separate endpoints
+- Every endpoint returns: { data, error, meta }
+- Prefer query params for filtering over separate endpoints
+- Non-breaking additions only
+- Do NOT modify or rename these existing working routes:
+    POST /api/v1/auth/register
+    POST /api/v1/auth/login
+    GET  /api/v1/auth/me
+    GET  /api/v1/mosques/nearby
+    POST /api/v1/bookmarks
+    DELETE /api/v1/bookmarks/:mosqueId
+
+MASTER_CONTEXT:
+[paste full MASTER_CONTEXT.md here]
+
+ALL CSIFs — paste every CSIF output below, one after another:
+[paste all 30 CSIF outputs here]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Produce API_CONTRACT.md in this exact format:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# API_CONTRACT.md — BelieversLens
+# Single source of truth for all API shapes.
+# Both Flutter and Fastify must match this exactly.
+# Generated once before any screen is built.
+# Updated only when a new endpoint is truly required.
+
+---
+
+## Standard Response Shape
+Success:   { "data": <payload>,  "error": null,      "meta": {} }
+Error:     { "data": null,       "error": "message", "meta": {} }
+Paginated: { "data": [...],      "error": null,
+             "meta": { "page": 1, "limit": 20, "total": 100 } }
+
+## Auth Header
+Authorization: Bearer <jwt_token>
+All protected routes use: fastify.authenticate hook
+
+## Standard Error Codes
+400 validation_error  — request body/params failed validation
+401 unauthorized      — token missing, invalid, or expired
+403 forbidden         — valid token, insufficient role/permission
+404 not_found         — requested resource does not exist
+409 conflict          — duplicate resource (e.g. already registered)
+500 server_error      — unexpected internal error
+
+## Flutter Client Notes
+- Base URL: AppConfig.apiBaseUrl
+- All calls via: lib/services/api_client.dart
+- Error type: ApiException(message, statusCode)
+- Always unwrap: response['data'] — never the root response object
+
+---
+
+## Domain: Auth
+[document each auth endpoint]
+
+### POST /api/v1/auth/register
+Auth required: no
+Request body:
+{
+  "fullName": "string, required",
+  "email": "string, required, valid email",
+  "password": "string, required, min 8 chars"
+}
+Success response.data:
+{
+  "user": { "id": "uuid", "fullName": "string", "email": "string" },
+  "accessToken": "string",
+  "refreshToken": "string"
+}
+Errors: 400: validation_error | 409: email already exists
+
+[continue for login, /me, and any new auth endpoints found in CSIFs]
+
+---
+
+## Domain: Mosques
+[document each mosque endpoint found across all CSIFs]
+
+---
+
+## Domain: [next domain]
+[continue for every domain found across all 30 CSIFs]
+
+---
+
+## Endpoint Index
+[flat list for quick reference — paste at top of relevant API_CONTRACT
+sections when building each screen in GPT-5.4]
+
+METHOD   PATH                          AUTH   USED BY SCREENS
+───────────────────────────────────────────────────────────────
+POST     /api/v1/auth/register         no     SignupScreen
+POST     /api/v1/auth/login            no     LoginScreen
+GET      /api/v1/auth/me               yes    HomeScreen, ProfileScreen
+GET      /api/v1/mosques/nearby        yes    HomeScreen, MosqueSearchScreen
+[continue for all endpoints]

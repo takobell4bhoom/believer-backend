@@ -1,0 +1,13 @@
+export async function healthRoutes(app) {
+  app.get('/', async () => ({
+    name: 'Believer Backend API',
+    status: 'ok',
+    version: '1.0.0',
+    docs: {
+      openapi: '/docs/openapi.yaml',
+      postmanCollection: '/docs/postman_collection.json'
+    }
+  }));
+
+  app.get('/health', async () => ({ status: 'ok' }));
+}

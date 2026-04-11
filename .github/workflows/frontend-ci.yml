@@ -1,0 +1,32 @@
+name: Frontend CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  frontend-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install Flutter dependencies
+        run: flutter pub get
+
+      - name: Analyze Flutter app
+        run: flutter analyze
+
+      - name: Run Flutter tests
+        run: flutter test
+
+      - name: Build Flutter web release
+        run: flutter build web --release --dart-define=API_BASE_URL=https://api.example.com

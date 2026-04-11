@@ -1,0 +1,55 @@
+name: believer
+version: 1.0.0+1
+publish_to: 'none'
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  http: ^1.2.2
+  shared_preferences: ^2.3.2
+  flutter_secure_storage: ^9.2.4
+  flutter_riverpod: ^2.5.1
+  flutter_svg: ^2.1.0
+  geolocator: ^13.0.2
+  url_launcher: ^6.3.1
+  share_plus: ^10.1.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/illustrations/
+    - assets/images/
+    - assets/images/onboarding/
+  fonts:
+    - family: Figtree
+      fonts:
+        - asset: assets/fonts/Figtree/Figtree-Light.ttf
+          weight: 300
+        - asset: assets/fonts/Figtree/Figtree-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/Figtree/Figtree-Regular.ttf
+          weight: 500
+        - asset: assets/fonts/Figtree/Figtree-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Figtree/Figtree-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/Figtree/Figtree-Bold.ttf
+          weight: 800
+    - family: Outfit
+      fonts:
+        - asset: assets/fonts/Outfit/Outfit-Bold.ttf
+          weight: 700
+    - family: Proza Libre
+      fonts:
+        - asset: assets/fonts/ProzaLibre/ProzaLibre-SemiBold.ttf
+          weight: 600
+  
