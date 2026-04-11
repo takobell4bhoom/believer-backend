@@ -36,7 +36,7 @@ class _BrowserCurrentLocationService implements CurrentLocationService {
   const _BrowserCurrentLocationService();
 
   @override
-  bool get isSupported => html.window.isSecureContext;
+  bool get isSupported => html.window.isSecureContext ?? false;
 
   @override
   Future<CurrentLocationCoordinates> getCurrentCoordinates() async {
