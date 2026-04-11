@@ -14,6 +14,7 @@ import 'package:believer/models/prayer_timings.dart';
 import 'package:believer/navigation/app_routes.dart';
 import 'package:believer/screens/home_page_1.dart';
 import 'package:believer/screens/event_detail_screen.dart';
+import 'package:believer/screens/location_setup_screen.dart';
 import 'package:believer/screens/map_screen.dart';
 import 'package:believer/services/current_location_service.dart';
 import 'package:believer/services/location_preferences_service.dart';
@@ -933,7 +934,7 @@ void main() {
     expect(service.prayerTimeRequests, isEmpty);
   });
 
-  testWidgets('home page location header opens the location hub',
+  testWidgets('home page location header opens the location setup flow',
       (tester) async {
     final fixedNow = _todayAt(15, 0);
     final service = _FakeMosqueService(
@@ -952,8 +953,14 @@ void main() {
         container: container,
         child: MaterialApp(
           routes: {
-            AppRoutes.map: (_) =>
-                const Scaffold(body: Text('Location hub stub')),
+            AppRoutes.locationSetup: (_) => LocationSetupScreen(
+                  flowArgs: const LocationSetupFlowArgs(
+                    nextRoute: AppRoutes.map,
+                  ),
+                  locationPreferencesService: _preciseLocationService(),
+                  currentLocationService:
+                      const _FakeCurrentLocationService(isSupported: true),
+                ),
             AppRoutes.profileSettings: (_) =>
                 const Scaffold(body: Text('Profile settings stub')),
           },
@@ -970,7 +977,8 @@ void main() {
     await tester.tap(find.byKey(const Key('home-location-button')));
     await tester.pumpAndSettle();
 
-    expect(find.text('Location hub stub'), findsOneWidget);
+    expect(find.text('2-Step Set Up'), findsOneWidget);
+    expect(find.text('Set Location'), findsOneWidget);
   });
 
   testWidgets('map screen explains the launch-safe location scope',

@@ -96,7 +96,7 @@ node --input-type=module -e "import dotenv from 'dotenv'; dotenv.config({ path: 
 - Android release builds must keep `ACCESS_COARSE_LOCATION` and `ACCESS_FINE_LOCATION`, and iOS builds must keep `NSLocationWhenInUseUsageDescription`, for native current-location lookup to work.
 - In-app map browsing/rendering is still out of scope, so no Flutter Google Maps SDK key is required unless that scope changes later.
 - The public map/location hub should only show real location flows for the current platform: current location where supported, otherwise Google-backed typed search only.
-- The Home and Events location affordances should both route into that same location hub.
+- The Home and Events location affordances should both open the Figma-aligned `Set Location` setup screen first, while preserving the same supported current-location and typed-search flows behind it.
 - The public Events surface only shows mosque-submitted published event/class records. Nearby mosques without published program content must render the honest empty state instead of synthetic listing cards, and unpublished schedules must stay labeled as unpublished instead of falling back to filler values.
 
 ## Release order
@@ -159,7 +159,7 @@ Run these checks in order after the release is live:
    If direct geocoding returns `This API is not activated on your API project`, enable `Geocoding API`.
    If direct Places autocomplete/details returns `LegacyApiNotActivatedMapError`, enable the legacy `Places API` for the current backend key/project.
 10. In a supported secure browser context or Android/iOS build, verify current-location permission success and denial both show honest outcomes without blocking manual entry.
-11. Open the location hub from both Home and Events and verify it shows current-location lookup only where supported, always keeps typed search available, and still makes it clear that live in-app map browsing is not part of launch.
+11. Open the location entry point from both Home and Events and verify it lands on the `2-Step Set Up` / `Set Location` screen, then confirm the flow still shows current-location lookup only where supported, always keeps typed search available, and still makes it clear that live in-app map browsing is not part of launch where that hub is shown later in the flow.
 12. Open Events and verify the listing only shows mosque-submitted published events/classes from nearby mosques.
 13. If the nearby mosques have no published program content, verify the Events empty state says so explicitly instead of showing filler.
 14. Open an event without a published schedule and verify the UI says `Schedule not published` instead of inventing timing text such as `This week`.

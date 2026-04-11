@@ -21,8 +21,8 @@ Use this after staging sign-off or immediately after a production deploy on the 
 - If transactional email is enabled for the environment, confirm signup triggers the welcome email.
 - In location setup, confirm typed place search returns real Google-backed suggestions and coordinate confirmation works end to end.
 - On supported browsers running in a secure context plus Android/iOS devices, confirm current-location permission flow is honest: success saves coordinates, denial still leaves manual entry available, and unsupported platforms fall back cleanly to manual entry.
-- Confirm the Home and Events location affordances both open the location hub.
-- Confirm the location hub shows current-location lookup only when the platform actually supports it, while keeping Google-backed typed search available everywhere and still stating that live in-app map browsing is out of scope for this launch.
+- Confirm the Home and Events location affordances both open the `2-Step Set Up` / `Set Location` screen first.
+- Confirm the location setup flow still shows current-location lookup only when the platform actually supports it, keeps Google-backed typed search available, and preserves the honest launch messaging about live in-app map browsing being out of scope where that follow-on hub appears.
 - Open Events and confirm the listing only shows mosque-submitted published events/classes, not one synthetic card per nearby mosque.
 - If nearby mosques have no published events/classes, confirm the Events screen shows the explicit empty state instead of filler content.
 - Apply at least one event filter or search term and confirm results narrow against real published program titles/details, not synthetic defaults like `This week` or `EVENT`.

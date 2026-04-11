@@ -7,6 +7,7 @@ import '../models/mosque_model.dart';
 import '../navigation/app_startup.dart';
 import '../navigation/app_routes.dart';
 import '../screens/event_search_listing.dart';
+import '../screens/location_setup_screen.dart';
 import '../services/location_preferences_service.dart';
 import '../widgets/common/main_bottom_nav_bar.dart';
 
@@ -92,7 +93,10 @@ class _EventsSearchState extends ConsumerState<EventsSearch> {
   }
 
   Future<void> _openLocation() async {
-    await Navigator.of(context).pushNamed(AppRoutes.map);
+    await Navigator.of(context).pushNamed(
+      AppRoutes.locationSetup,
+      arguments: const LocationSetupFlowArgs(nextRoute: AppRoutes.map),
+    );
     if (!mounted) {
       return;
     }

@@ -20,6 +20,7 @@ import '../services/mosque_service.dart';
 import '../services/onboarding_preferences_service.dart';
 import '../services/outbound_action_service.dart';
 import 'event_detail_screen.dart';
+import 'location_setup_screen.dart';
 import '../widgets/mosque_image_frame.dart';
 import '../widgets/common/figma_filter_chip.dart';
 import '../widgets/common/figma_outline_action_button.dart';
@@ -290,7 +291,10 @@ class _HomePage1State extends ConsumerState<HomePage1> {
   }
 
   Future<void> _openLocation() async {
-    await Navigator.of(context).pushNamed(AppRoutes.map);
+    await Navigator.of(context).pushNamed(
+      AppRoutes.locationSetup,
+      arguments: const LocationSetupFlowArgs(nextRoute: AppRoutes.map),
+    );
     if (!mounted) {
       return;
     }
