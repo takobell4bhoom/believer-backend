@@ -48,7 +48,10 @@ class _MapScreenState extends State<MapScreen> {
   Future<void> _openCurrentLocationFlow() async {
     await Navigator.of(context).pushNamed(
       AppRoutes.locationSetup,
-      arguments: const LocationSetupFlowArgs(nextRoute: AppRoutes.map),
+      arguments: const LocationSetupFlowArgs(
+        nextRoute: AppRoutes.home,
+        clearStackOnComplete: true,
+      ),
     );
     await _refreshSavedLocation();
   }
@@ -56,7 +59,10 @@ class _MapScreenState extends State<MapScreen> {
   Future<void> _openManualLocationFlow() async {
     await Navigator.of(context).pushNamed(
       AppRoutes.locationSetupManual,
-      arguments: const LocationSetupFlowArgs(nextRoute: AppRoutes.map),
+      arguments: const LocationSetupFlowArgs(
+        nextRoute: AppRoutes.home,
+        clearStackOnComplete: true,
+      ),
     );
     await _refreshSavedLocation();
   }

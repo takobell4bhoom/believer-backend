@@ -952,17 +952,24 @@ void main() {
       UncontrolledProviderScope(
         container: container,
         child: MaterialApp(
-          routes: {
-            AppRoutes.locationSetup: (_) => LocationSetupScreen(
-                  flowArgs: const LocationSetupFlowArgs(
-                    nextRoute: AppRoutes.map,
+          onGenerateRoute: (settings) {
+            if (settings.name == AppRoutes.locationSetup) {
+              final args = settings.arguments! as LocationSetupFlowArgs;
+              return MaterialPageRoute<void>(
+                builder: (_) => Scaffold(
+                  body: Text(
+                    'Setup -> ${args.nextRoute} / clear=${args.clearStackOnComplete}',
                   ),
-                  locationPreferencesService: _preciseLocationService(),
-                  currentLocationService:
-                      const _FakeCurrentLocationService(isSupported: true),
                 ),
-            AppRoutes.profileSettings: (_) =>
-                const Scaffold(body: Text('Profile settings stub')),
+              );
+            }
+            if (settings.name == AppRoutes.profileSettings) {
+              return MaterialPageRoute<void>(
+                builder: (_) =>
+                    const Scaffold(body: Text('Profile settings stub')),
+              );
+            }
+            return null;
           },
           home: HomePage1(
             mosqueService: service,
@@ -977,8 +984,10 @@ void main() {
     await tester.tap(find.byKey(const Key('home-location-button')));
     await tester.pumpAndSettle();
 
-    expect(find.text('2-Step Set Up'), findsOneWidget);
-    expect(find.text('Set Location'), findsOneWidget);
+    expect(
+      find.text('Setup -> ${AppRoutes.home} / clear=true'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('map screen explains the launch-safe location scope',
@@ -1027,6 +1036,75 @@ void main() {
     );
     expect(
       find.textContaining('supported browsers running in a secure context'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('map screen launches current-location setup back to home',
+      (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        onGenerateRoute: (settings) {
+          if (settings.name == AppRoutes.locationSetup) {
+            final args = settings.arguments! as LocationSetupFlowArgs;
+            return MaterialPageRoute<void>(
+              builder: (_) => Scaffold(
+                body: Text(
+                  'Setup -> ${args.nextRoute} / clear=${args.clearStackOnComplete}',
+                ),
+              ),
+            );
+          }
+          return null;
+        },
+        home: MapScreen(
+          locationPreferencesService: _FakeLocationPreferencesService(null),
+          currentLocationService:
+              const _FakeCurrentLocationService(isSupported: true),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Use my current location'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Setup -> ${AppRoutes.home} / clear=true'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('map screen launches manual setup back to home', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        onGenerateRoute: (settings) {
+          if (settings.name == AppRoutes.locationSetupManual) {
+            final args = settings.arguments! as LocationSetupFlowArgs;
+            return MaterialPageRoute<void>(
+              builder: (_) => Scaffold(
+                body: Text(
+                  'Manual setup -> ${args.nextRoute} / clear=${args.clearStackOnComplete}',
+                ),
+              ),
+            );
+          }
+          return null;
+        },
+        home: MapScreen(
+          locationPreferencesService: _FakeLocationPreferencesService(null),
+          currentLocationService:
+              const _FakeCurrentLocationService(isSupported: true),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Search for a location'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Manual setup -> ${AppRoutes.home} / clear=true'),
       findsOneWidget,
     );
   });

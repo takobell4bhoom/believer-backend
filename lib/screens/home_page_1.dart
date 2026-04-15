@@ -293,7 +293,10 @@ class _HomePage1State extends ConsumerState<HomePage1> {
   Future<void> _openLocation() async {
     await Navigator.of(context).pushNamed(
       AppRoutes.locationSetup,
-      arguments: const LocationSetupFlowArgs(nextRoute: AppRoutes.map),
+      arguments: const LocationSetupFlowArgs(
+        nextRoute: AppRoutes.home,
+        clearStackOnComplete: true,
+      ),
     );
     if (!mounted) {
       return;

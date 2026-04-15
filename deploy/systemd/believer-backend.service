@@ -1,11 +1,11 @@
 [Unit]
 Description=BelieversLens Backend API
-After=network.target postgresql.service
+After=network.target docker.service
 
 [Service]
 Type=simple
-User=www-data
-Group=www-data
+User=ubuntu
+Group=ubuntu
 WorkingDirectory=/var/www/believer/backend
 Environment=PATH=/usr/bin:/usr/local/bin
 ExecStart=/usr/bin/node src/index.js
