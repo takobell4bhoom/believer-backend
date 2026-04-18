@@ -40,6 +40,8 @@ class AppRoutes {
   static const String ownedMosques = '/owned-mosques';
   static const String businessRegistrationIntro = '/business-registration';
   static const String businessModeration = '/business-moderation';
+  static const String mosqueModeration = '/mosque-moderation';
+  static const String superAdminPanel = '/super-admin-panel';
   static const String businessRegistrationBasicDetails =
       '/business-registration/basic-details';
   static const String businessRegistrationContactLocation =

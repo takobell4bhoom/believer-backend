@@ -217,7 +217,7 @@ void main() {
   });
 
   testWidgets(
-      'super admin profile/settings variant exposes business moderation',
+      'super admin sees the unified Admin Panel entry point from profile settings',
       (tester) async {
     final service = _FakeAuthService();
     final container = ProviderContainer(
@@ -230,8 +230,8 @@ void main() {
         container: container,
         child: MaterialApp(
           routes: {
-            AppRoutes.businessModeration: (_) =>
-                const Scaffold(body: Text('Business moderation stub')),
+            AppRoutes.superAdminPanel: (_) =>
+                const Scaffold(body: Text('Admin panel stub')),
           },
           home: ProfileSettingsScreen(authService: service),
         ),
@@ -244,13 +244,13 @@ void main() {
       find.byKey(const ValueKey('profile-settings-super-admin-section')),
       findsOneWidget,
     );
-    expect(find.text('Review Business Listings'), findsOneWidget);
+    expect(find.text('Admin Panel'), findsOneWidget);
 
-    await tester.ensureVisible(find.text('Review Business Listings'));
-    await tester.tap(find.text('Review Business Listings'));
+    await tester.ensureVisible(find.text('Admin Panel'));
+    await tester.tap(find.text('Admin Panel'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Business moderation stub'), findsOneWidget);
+    expect(find.text('Admin panel stub'), findsOneWidget);
   });
 
   testWidgets('settings info rows navigate to real routes', (tester) async {

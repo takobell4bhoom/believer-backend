@@ -299,11 +299,14 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
                               ),
                               children: [
                                 _ActionRow(
-                                  title: 'Review Business Listings',
+                                  key: const ValueKey(
+                                    'profile-settings-super-admin-panel',
+                                  ),
+                                  title: 'Admin Panel',
                                   subtitle:
-                                      'Approve or reject listings that are waiting for moderation.',
+                                      'Open the unified moderation and customer account panel.',
                                   onTap: () => Navigator.of(context)
-                                      .pushNamed(AppRoutes.businessModeration),
+                                      .pushNamed(AppRoutes.superAdminPanel),
                                 ),
                               ],
                             ),

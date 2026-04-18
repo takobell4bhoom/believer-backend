@@ -18,6 +18,7 @@ import { bookmarkRoutes } from './routes/bookmarks.js';
 import { notificationRoutes } from './routes/notifications.js';
 import { businessListingsRoutes } from './routes/business-listings.js';
 import { servicesRoutes } from './routes/services.js';
+import { superAdminRoutes } from './routes/super-admin.js';
 import { createPrayerTimeService } from './services/prayer-times.js';
 import {
   fetchServices,
@@ -90,6 +91,7 @@ export function buildApp(options = {}) {
     await bookmarkRoutes(api);
     await notificationRoutes(api);
     await businessListingsRoutes(api);
+    await superAdminRoutes(api);
     await servicesRoutes(api);
   });
 

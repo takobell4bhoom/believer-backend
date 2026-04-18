@@ -77,6 +77,10 @@ const reviewParamSchema = z.object({
   id: z.string().uuid()
 });
 
+const moderationRejectionSchema = z.object({
+  rejectionReason: z.string().trim().min(3).max(1000)
+});
+
 const broadcastParamSchema = z.object({
   id: z.string().uuid(),
   broadcastId: z.string().uuid()
@@ -419,9 +423,190 @@ async function ensureAdminUser(userId) {
     throw new HttpError(403, ERROR_CODES.accountDisabled, 'Your account is disabled');
   }
 
-  if (user.role !== 'admin') {
+  if (user.role !== 'admin' && user.role !== 'super_admin') {
     throw new HttpError(403, ERROR_CODES.forbidden, 'Admin access required');
   }
+}
+
+function requireSuperAdmin(request) {
+  if (request.authAccount?.role !== 'super_admin') {
+    throw new HttpError(
+      403,
+      ERROR_CODES.forbidden,
+      'Only super admins can moderate mosques'
+    );
+  }
+}
+
+function mapMosqueModerationRow(row) {
+  const moderationStatus =
+    row.moderation_status ?? (row.is_verified ? 'live' : 'pending');
+
+  return {
+    id: row.id,
+    status: moderationStatus,
+    name: row.name,
+    addressLine: row.address_line,
+    city: row.city,
+    state: row.state,
+    country: row.country,
+    sect: row.sect,
+    contactName: row.contact_name,
+    contactEmail: row.contact_email,
+    contactPhone: row.contact_phone,
+    submittedAt: row.created_at ? new Date(row.created_at).toISOString() : null,
+    reviewedAt: row.reviewed_at ? new Date(row.reviewed_at).toISOString() : null,
+    rejectionReason: row.rejection_reason ?? null,
+    submitter: {
+      id: row.submitter_id ?? '',
+      fullName: row.submitter_name ?? '',
+      email: row.submitter_email ?? ''
+    }
+  };
+}
+
+async function listPendingMosquesForModeration(client = pool) {
+  const result = await client.query(
+    `SELECT
+       m.id,
+       m.name,
+       m.address_line,
+       m.city,
+       m.state,
+       m.country,
+       m.sect,
+       m.contact_name,
+       m.contact_email,
+       m.contact_phone,
+       m.is_verified,
+       m.moderation_status,
+       m.created_at,
+       m.reviewed_at,
+       m.rejection_reason,
+       u.id AS submitter_id,
+       COALESCE(NULLIF(u.full_name, ''), 'Admin User') AS submitter_name,
+       COALESCE(u.email, '') AS submitter_email
+     FROM mosques m
+     LEFT JOIN users u
+       ON u.id = m.created_by_user_id
+     WHERE COALESCE(
+       m.moderation_status,
+       CASE
+         WHEN m.is_verified = TRUE THEN 'live'
+         ELSE 'pending'
+       END
+     ) = 'pending'
+     ORDER BY m.created_at ASC, m.name ASC`
+  );
+
+  return result.rows.map(mapMosqueModerationRow);
+}
+
+async function approvePendingMosque({ mosqueId, reviewerUserId, client = pool }) {
+  const result = await client.query(
+    `WITH updated AS (
+       UPDATE mosques
+       SET is_verified = TRUE,
+           moderation_status = 'live',
+           reviewed_by = $2,
+           reviewed_at = now(),
+           rejection_reason = NULL
+       WHERE id = $1
+         AND COALESCE(
+           moderation_status,
+           CASE
+             WHEN is_verified = TRUE THEN 'live'
+             ELSE 'pending'
+           END
+         ) = 'pending'
+       RETURNING *
+     )
+     SELECT
+       updated.id,
+       updated.name,
+       updated.address_line,
+       updated.city,
+       updated.state,
+       updated.country,
+       updated.sect,
+       updated.contact_name,
+       updated.contact_email,
+       updated.contact_phone,
+       updated.is_verified,
+       updated.moderation_status,
+       updated.created_at,
+       updated.reviewed_at,
+       updated.rejection_reason,
+       u.id AS submitter_id,
+       COALESCE(NULLIF(u.full_name, ''), 'Admin User') AS submitter_name,
+       COALESCE(u.email, '') AS submitter_email
+     FROM updated
+     LEFT JOIN users u
+       ON u.id = updated.created_by_user_id`,
+    [mosqueId, reviewerUserId]
+  );
+
+  if (!result.rowCount) {
+    return null;
+  }
+
+  return mapMosqueModerationRow(result.rows[0]);
+}
+
+async function rejectPendingMosque({
+  mosqueId,
+  reviewerUserId,
+  rejectionReason,
+  client = pool
+}) {
+  const result = await client.query(
+    `WITH updated AS (
+       UPDATE mosques
+       SET is_verified = FALSE,
+           moderation_status = 'rejected',
+           reviewed_by = $2,
+           reviewed_at = now(),
+           rejection_reason = $3
+       WHERE id = $1
+         AND COALESCE(
+           moderation_status,
+           CASE
+             WHEN is_verified = TRUE THEN 'live'
+             ELSE 'pending'
+           END
+         ) = 'pending'
+       RETURNING *
+     )
+     SELECT
+       updated.id,
+       updated.name,
+       updated.address_line,
+       updated.city,
+       updated.state,
+       updated.country,
+       updated.sect,
+       updated.contact_name,
+       updated.contact_email,
+       updated.contact_phone,
+       updated.is_verified,
+       updated.moderation_status,
+       updated.created_at,
+       updated.reviewed_at,
+       updated.rejection_reason,
+       u.id AS submitter_id,
+       COALESCE(NULLIF(u.full_name, ''), 'Admin User') AS submitter_name,
+       COALESCE(u.email, '') AS submitter_email
+     FROM updated
+     LEFT JOIN users u
+       ON u.id = updated.created_by_user_id`,
+    [mosqueId, reviewerUserId, rejectionReason]
+  );
+
+  if (!result.rowCount) {
+    return null;
+  }
+
+  return mapMosqueModerationRow(result.rows[0]);
 }
 
 async function createReview(request, reply, mosqueIdFromPath) {
@@ -957,6 +1142,110 @@ export async function mosqueRoutes(app) {
     return deleteBroadcastMessage(request, reply);
   });
 
+  app.get('/api/v1/admin/mosques/pending', { preHandler: [app.authenticate] }, async (request) => {
+    requireSuperAdmin(request);
+
+    const items = await listPendingMosquesForModeration();
+    return successResponse({ items });
+  });
+
+  app.post('/api/v1/admin/mosques/:id/approve', { preHandler: [app.authenticate] }, async (request) => {
+    requireSuperAdmin(request);
+
+    const paramsParsed = reviewParamSchema.safeParse(request.params);
+    if (!paramsParsed.success) {
+      throw new HttpError(400, ERROR_CODES.validation, 'Invalid mosque id', paramsParsed.error.issues);
+    }
+
+    const existingMosque = await pool.query(
+      `SELECT
+         id,
+         COALESCE(
+           moderation_status,
+           CASE
+             WHEN is_verified = TRUE THEN 'live'
+             ELSE 'pending'
+           END
+         ) AS moderation_status
+       FROM mosques
+       WHERE id = $1`,
+      [paramsParsed.data.id]
+    );
+
+    if (!existingMosque.rowCount) {
+      throw new HttpError(404, ERROR_CODES.mosqueNotFound, 'Mosque not found');
+    }
+
+    if (existingMosque.rows[0].moderation_status !== 'pending') {
+      throw new HttpError(409, ERROR_CODES.validation, 'Only pending mosques can be approved');
+    }
+
+    const mosque = await approvePendingMosque({
+      mosqueId: paramsParsed.data.id,
+      reviewerUserId: request.authAccount.id
+    });
+
+    if (mosque == null) {
+      throw new HttpError(409, ERROR_CODES.validation, 'This mosque is no longer available for approval');
+    }
+
+    return successResponse({ mosque });
+  });
+
+  app.post('/api/v1/admin/mosques/:id/reject', { preHandler: [app.authenticate] }, async (request) => {
+    requireSuperAdmin(request);
+
+    const paramsParsed = reviewParamSchema.safeParse(request.params);
+    if (!paramsParsed.success) {
+      throw new HttpError(400, ERROR_CODES.validation, 'Invalid mosque id', paramsParsed.error.issues);
+    }
+
+    const bodyParsed = moderationRejectionSchema.safeParse(request.body);
+    if (!bodyParsed.success) {
+      throw new HttpError(
+        400,
+        ERROR_CODES.validation,
+        'Invalid mosque rejection payload',
+        bodyParsed.error.issues
+      );
+    }
+
+    const existingMosque = await pool.query(
+      `SELECT
+         id,
+         COALESCE(
+           moderation_status,
+           CASE
+             WHEN is_verified = TRUE THEN 'live'
+             ELSE 'pending'
+           END
+         ) AS moderation_status
+       FROM mosques
+       WHERE id = $1`,
+      [paramsParsed.data.id]
+    );
+
+    if (!existingMosque.rowCount) {
+      throw new HttpError(404, ERROR_CODES.mosqueNotFound, 'Mosque not found');
+    }
+
+    if (existingMosque.rows[0].moderation_status !== 'pending') {
+      throw new HttpError(409, ERROR_CODES.validation, 'Only pending mosques can be rejected');
+    }
+
+    const mosque = await rejectPendingMosque({
+      mosqueId: paramsParsed.data.id,
+      reviewerUserId: request.authAccount.id,
+      rejectionReason: bodyParsed.data.rejectionReason
+    });
+
+    if (mosque == null) {
+      throw new HttpError(409, ERROR_CODES.validation, 'This mosque is no longer available for rejection');
+    }
+
+    return successResponse({ mosque });
+  });
+
   app.get('/api/v1/mosques', async (request) => {
     const parsed = listQuerySchema.safeParse(request.query);
     if (!parsed.success) {
@@ -976,7 +1265,7 @@ export async function mosqueRoutes(app) {
       const facilities = toFacilityArray(query.facilities);
       const { page, limit, offset } = parsePagination(query, 100);
 
-      const extraWhere = [];
+      const extraWhere = ['m.is_verified = TRUE'];
       const extraParams = [];
 
       if (query.search) {
@@ -1021,7 +1310,7 @@ export async function mosqueRoutes(app) {
     const facilities = toFacilityArray(query.facilities);
 
     const params = [];
-    const where = [];
+    const where = ['m.is_verified = TRUE'];
 
     if (query.search) {
       params.push(`%${query.search}%`);
@@ -1140,7 +1429,8 @@ export async function mosqueRoutes(app) {
       longitude: resolved.longitude,
       radiusKm: resolved.radiusKm,
       limit: query.limit,
-      userId
+      userId,
+      extraWhere: ['m.is_verified = TRUE']
     });
 
     return successResponse({
@@ -1330,7 +1620,11 @@ export async function mosqueRoutes(app) {
          FROM mosque_reviews r
          WHERE r.mosque_id = m.id
        ) review_summary ON TRUE
-       WHERE m.id = $1`,
+       WHERE m.id = $1
+         AND (
+           m.is_verified = TRUE
+           OR ($2::uuid IS NOT NULL AND m.created_by_user_id = $2::uuid)
+         )`,
       [parsed.data.id, userId]
     );
 

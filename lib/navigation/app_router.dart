@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../features/business_moderation/business_moderation_screen.dart';
+import '../features/mosque_moderation/mosque_moderation_screen.dart';
+import '../features/super_admin/super_admin_panel_screen.dart';
 import '../features/business_registration/business_registration_flow_screen.dart';
 import '../features/business_registration/business_registration_models.dart';
 import '../models/review.dart';
@@ -321,6 +323,14 @@ class AppRouter {
       case AppRoutes.businessModeration:
         return MaterialPageRoute<void>(
           builder: (_) => const BusinessModerationScreen(),
+        );
+      case AppRoutes.mosqueModeration:
+        return MaterialPageRoute<void>(
+          builder: (_) => const MosqueModerationScreen(),
+        );
+      case AppRoutes.superAdminPanel:
+        return MaterialPageRoute<void>(
+          builder: (_) => const SuperAdminPanelScreen(),
         );
       case AppRoutes.businessRegistrationIntro:
         final args = settings.arguments;

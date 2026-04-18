@@ -373,10 +373,70 @@ async function submitBusinessListingForReview(app, session, overrides = {}) {
   return response.json().data.listing;
 }
 
+function buildMosquePayload(overrides = {}) {
+  return {
+    name: 'Admin Created Mosque',
+    addressLine: '15 Unity Street',
+    city: 'Bengaluru',
+    state: 'Karnataka',
+    country: 'India',
+    postalCode: '560001',
+    latitude: 12.9716,
+    longitude: 77.5946,
+    contactName: 'Fatima Noor',
+    contactPhone: '+91-9999999999',
+    contactEmail: 'fatima@example.com',
+    websiteUrl: 'https://example.org',
+    imageUrl: 'https://example.org/mosque.jpg',
+    sect: 'Sunni',
+    duhrTime: '01:15 PM',
+    asrTime: '04:45 PM',
+    facilities: ['parking', 'wudu', 'women_area'],
+    content: {
+      events: [
+        {
+          title: 'Community Family Night',
+          schedule: 'Fri, Apr 12 • 7:30 PM',
+          posterLabel: 'Family',
+          location: 'Main Prayer Hall',
+          description: 'Dinner, reminders, and an open community gathering.'
+        }
+      ],
+      classes: [],
+      connect: []
+    },
+    ...overrides
+  };
+}
+
+async function createMosqueAsAdmin(app, accessToken, overrides = {}) {
+  const response = await app.inject({
+    method: 'POST',
+    url: '/api/v1/mosques',
+    headers: {
+      authorization: `Bearer ${accessToken}`,
+      'content-type': 'application/json'
+    },
+    payload: buildMosquePayload(overrides)
+  });
+
+  assert.equal(response.statusCode, 201);
+  return response.json().data;
+}
+
 async function runMigration013BackfillBusinessListingCategoryFields() {
   const migrationPath = path.resolve(
     __dirname,
     '../src/db/migrations/013_backfill_business_listing_category_fields.sql'
+  );
+  const sql = await fs.readFile(migrationPath, 'utf8');
+  await pool.query(sql);
+}
+
+async function runMigration015SuperAdminMosqueModeration() {
+  const migrationPath = path.resolve(
+    __dirname,
+    '../src/db/migrations/015_super_admin_mosque_moderation.sql'
   );
   const sql = await fs.readFile(migrationPath, 'utf8');
   await pool.query(sql);
@@ -404,6 +464,7 @@ function createEmailStub() {
 }
 
 test.before(async () => {
+  await runMigration015SuperAdminMosqueModeration();
   await resetData();
 });
 
@@ -1268,56 +1329,14 @@ test('mosque listing/nearby + bookmark flow', async () => {
   await app.close();
 });
 
-test('admin mosque create flow persists and becomes discoverable', async () => {
+test('admin mosque create flow persists as pending and remains available to the owner', async () => {
   await resetData();
 
   const app = buildApp();
   const adminEmail = `admin-${Date.now()}@example.com`;
   const accessToken = await signupAndPromoteAdmin(app, adminEmail);
 
-  const createResponse = await app.inject({
-    method: 'POST',
-    url: '/api/v1/mosques',
-    headers: {
-      authorization: `Bearer ${accessToken}`,
-      'content-type': 'application/json'
-    },
-    payload: {
-      name: 'Admin Created Mosque',
-      addressLine: '15 Unity Street',
-      city: 'Bengaluru',
-      state: 'Karnataka',
-      country: 'India',
-      postalCode: '560001',
-      latitude: 12.9716,
-      longitude: 77.5946,
-      contactName: 'Fatima Noor',
-      contactPhone: '+91-9999999999',
-      contactEmail: 'fatima@example.com',
-      websiteUrl: 'https://example.org',
-      imageUrl: 'https://example.org/mosque.jpg',
-      sect: 'Sunni',
-      duhrTime: '01:15 PM',
-      asrTime: '04:45 PM',
-      facilities: ['parking', 'wudu', 'women_area'],
-      content: {
-        events: [
-          {
-            title: 'Community Family Night',
-            schedule: 'Fri, Apr 12 • 7:30 PM',
-            posterLabel: 'Family',
-            location: 'Main Prayer Hall',
-            description: 'Dinner, reminders, and an open community gathering.'
-          }
-        ],
-        classes: [],
-        connect: []
-      }
-    }
-  });
-
-  assert.equal(createResponse.statusCode, 201);
-  const createdMosque = createResponse.json().data;
+  const createdMosque = await createMosqueAsAdmin(app, accessToken);
   assert.equal(createdMosque.name, 'Admin Created Mosque');
   assert.equal(createdMosque.city, 'Bengaluru');
   assert.equal(createdMosque.sect, 'Sunni');
@@ -1370,21 +1389,7 @@ test('admin mosque create flow persists and becomes discoverable', async () => {
 
   assert.equal(nearbyResponse.statusCode, 200);
   const nearbyItems = nearbyResponse.json().data.items;
-  assert.equal(nearbyItems.length, 1);
-  assert.equal(nearbyItems[0].id, createdMosque.id);
-  assert.equal(nearbyItems[0].duhrTime, '01:15 PM');
-  assert.equal(nearbyItems[0].totalReviews, 0);
-  assert.equal(nearbyItems[0].canEdit, true);
-  assert.deepEqual(nearbyItems[0].classTags, []);
-  assert.deepEqual(nearbyItems[0].eventTags, ['Community Family Night']);
-  assert.equal(nearbyItems[0].events.length, 1);
-  assert.equal(nearbyItems[0].events[0].title, 'Community Family Night');
-  assert.equal(nearbyItems[0].events[0].location, 'Main Prayer Hall');
-  assert.equal(
-    nearbyItems[0].events[0].description,
-    'Dinner, reminders, and an open community gathering.'
-  );
-  assert.deepEqual(nearbyItems[0].classes, []);
+  assert.equal(nearbyItems.length, 0);
 
   const mineResponse = await app.inject({
     method: 'GET',
@@ -1398,6 +1403,21 @@ test('admin mosque create flow persists and becomes discoverable', async () => {
   assert.equal(mineResponse.json().data.items.length, 1);
   assert.equal(mineResponse.json().data.items[0].id, createdMosque.id);
   assert.equal(mineResponse.json().data.items[0].canEdit, true);
+
+  const publicListResponse = await app.inject({
+    method: 'GET',
+    url: '/api/v1/mosques?city=Bengaluru&search=Admin%20Created&sort=recent'
+  });
+
+  assert.equal(publicListResponse.statusCode, 200);
+  assert.equal(publicListResponse.json().data.items.length, 0);
+
+  const publicDetailResponse = await app.inject({
+    method: 'GET',
+    url: `/api/v1/mosques/${createdMosque.id}`
+  });
+
+  assert.equal(publicDetailResponse.statusCode, 404);
 
   const duplicateResponse = await app.inject({
     method: 'POST',
@@ -1420,6 +1440,438 @@ test('admin mosque create flow persists and becomes discoverable', async () => {
 
   assert.equal(duplicateResponse.statusCode, 409);
   assert.equal(duplicateResponse.json().error.code, 'MOSQUE_ALREADY_EXISTS');
+
+  await app.close();
+});
+
+test('pending mosque appears in the super-admin mosque moderation queue', async () => {
+  await resetData();
+
+  const app = buildApp();
+  const adminSession = await signupAdminSession(
+    app,
+    `mosque-pending-admin-${Date.now()}@example.com`
+  );
+  const createdMosque = await createMosqueAsAdmin(app, adminSession.accessToken, {
+    name: 'Pending Queue Mosque'
+  });
+  const superAdminSession = await signupSuperAdminSession(
+    app,
+    `mosque-pending-super-admin-${Date.now()}@example.com`
+  );
+
+  const pendingResponse = await app.inject({
+    method: 'GET',
+    url: '/api/v1/admin/mosques/pending',
+    headers: {
+      authorization: `Bearer ${superAdminSession.accessToken}`
+    }
+  });
+
+  assert.equal(pendingResponse.statusCode, 200);
+  assert.equal(pendingResponse.json().data.items.length, 1);
+  assert.equal(pendingResponse.json().data.items[0].id, createdMosque.id);
+  assert.equal(pendingResponse.json().data.items[0].status, 'pending');
+  assert.equal(pendingResponse.json().data.items[0].submitter.id, adminSession.userId);
+
+  await app.close();
+});
+
+test('super admin approval flips mosque verification to live', async () => {
+  await resetData();
+
+  const app = buildApp();
+  const adminSession = await signupAdminSession(
+    app,
+    `mosque-approve-admin-${Date.now()}@example.com`
+  );
+  const createdMosque = await createMosqueAsAdmin(app, adminSession.accessToken, {
+    name: 'Approval Flip Mosque'
+  });
+  const superAdminSession = await signupSuperAdminSession(
+    app,
+    `mosque-approve-super-admin-${Date.now()}@example.com`
+  );
+
+  const approveResponse = await app.inject({
+    method: 'POST',
+    url: `/api/v1/admin/mosques/${createdMosque.id}/approve`,
+    headers: {
+      authorization: `Bearer ${superAdminSession.accessToken}`
+    }
+  });
+
+  assert.equal(approveResponse.statusCode, 200);
+  assert.equal(approveResponse.json().data.mosque.id, createdMosque.id);
+  assert.equal(approveResponse.json().data.mosque.status, 'live');
+
+  const persistedMosque = await pool.query(
+    `SELECT is_verified
+     FROM mosques
+     WHERE id = $1`,
+    [createdMosque.id]
+  );
+
+  assert.equal(persistedMosque.rowCount, 1);
+  assert.equal(persistedMosque.rows[0].is_verified, true);
+
+  await app.close();
+});
+
+test('super admin can reject a mosque, store a reason, and remove it from the pending queue', async () => {
+  await resetData();
+
+  const app = buildApp();
+  const adminSession = await signupAdminSession(
+    app,
+    `mosque-reject-admin-${Date.now()}@example.com`
+  );
+  const createdMosque = await createMosqueAsAdmin(app, adminSession.accessToken, {
+    name: 'Rejected Queue Mosque'
+  });
+  const superAdminSession = await signupSuperAdminSession(
+    app,
+    `mosque-reject-super-admin-${Date.now()}@example.com`
+  );
+  const rejectionReason = 'Please add a clearer contact phone number before approval.';
+
+  const rejectResponse = await app.inject({
+    method: 'POST',
+    url: `/api/v1/admin/mosques/${createdMosque.id}/reject`,
+    headers: {
+      authorization: `Bearer ${superAdminSession.accessToken}`,
+      'content-type': 'application/json'
+    },
+    payload: {
+      rejectionReason
+    }
+  });
+
+  assert.equal(rejectResponse.statusCode, 200);
+  assert.equal(rejectResponse.json().data.mosque.id, createdMosque.id);
+  assert.equal(rejectResponse.json().data.mosque.status, 'rejected');
+  assert.equal(rejectResponse.json().data.mosque.rejectionReason, rejectionReason);
+  assert.ok(rejectResponse.json().data.mosque.reviewedAt);
+
+  const persistedMosque = await pool.query(
+    `SELECT is_verified, moderation_status, reviewed_by, reviewed_at, rejection_reason
+     FROM mosques
+     WHERE id = $1`,
+    [createdMosque.id]
+  );
+
+  assert.equal(persistedMosque.rowCount, 1);
+  assert.equal(persistedMosque.rows[0].is_verified, false);
+  assert.equal(persistedMosque.rows[0].moderation_status, 'rejected');
+  assert.equal(persistedMosque.rows[0].reviewed_by, superAdminSession.userId);
+  assert.ok(persistedMosque.rows[0].reviewed_at);
+  assert.equal(persistedMosque.rows[0].rejection_reason, rejectionReason);
+
+  const pendingResponse = await app.inject({
+    method: 'GET',
+    url: '/api/v1/admin/mosques/pending',
+    headers: {
+      authorization: `Bearer ${superAdminSession.accessToken}`
+    }
+  });
+
+  assert.equal(pendingResponse.statusCode, 200);
+  assert.equal(pendingResponse.json().data.items.length, 0);
+
+  await app.close();
+});
+
+test('approved mosque becomes visible in public mosque list, detail, and nearby APIs', async () => {
+  await resetData();
+
+  const app = buildApp();
+  const adminSession = await signupAdminSession(
+    app,
+    `mosque-public-admin-${Date.now()}@example.com`
+  );
+  const createdMosque = await createMosqueAsAdmin(app, adminSession.accessToken, {
+    name: 'Public Live Mosque'
+  });
+  const superAdminSession = await signupSuperAdminSession(
+    app,
+    `mosque-public-super-admin-${Date.now()}@example.com`
+  );
+
+  const approveResponse = await app.inject({
+    method: 'POST',
+    url: `/api/v1/admin/mosques/${createdMosque.id}/approve`,
+    headers: {
+      authorization: `Bearer ${superAdminSession.accessToken}`
+    }
+  });
+
+  assert.equal(approveResponse.statusCode, 200);
+
+  const listResponse = await app.inject({
+    method: 'GET',
+    url: '/api/v1/mosques?city=Bengaluru&search=Public%20Live&sort=recent'
+  });
+
+  assert.equal(listResponse.statusCode, 200);
+  assert.equal(listResponse.json().data.items.length, 1);
+  assert.equal(listResponse.json().data.items[0].id, createdMosque.id);
+  assert.equal(listResponse.json().data.items[0].isVerified, true);
+
+  const detailResponse = await app.inject({
+    method: 'GET',
+    url: `/api/v1/mosques/${createdMosque.id}`
+  });
+
+  assert.equal(detailResponse.statusCode, 200);
+  assert.equal(detailResponse.json().data.id, createdMosque.id);
+  assert.equal(detailResponse.json().data.isVerified, true);
+
+  const nearbyResponse = await app.inject({
+    method: 'GET',
+    url: '/api/v1/mosques/nearby?latitude=12.9716&longitude=77.5946&radius=5&limit=20'
+  });
+
+  assert.equal(nearbyResponse.statusCode, 200);
+  assert.equal(nearbyResponse.json().data.items.length, 1);
+  assert.equal(nearbyResponse.json().data.items[0].id, createdMosque.id);
+  assert.equal(nearbyResponse.json().data.items[0].isVerified, true);
+
+  await app.close();
+});
+
+test('non-super-admin users are forbidden from super-admin user management endpoints', async () => {
+  await resetData();
+
+  const app = buildApp();
+  const communitySession = await signupCommunitySession(
+    app,
+    `customer-forbidden-user-${Date.now()}@example.com`
+  );
+  const adminSession = await signupAdminSession(
+    app,
+    `customer-forbidden-admin-${Date.now()}@example.com`
+  );
+
+  const listResponse = await app.inject({
+    method: 'GET',
+    url: '/api/v1/admin/users',
+    headers: {
+      authorization: `Bearer ${adminSession.accessToken}`
+    }
+  });
+
+  assert.equal(listResponse.statusCode, 403);
+  assert.equal(listResponse.json().error.code, 'FORBIDDEN');
+
+  const deactivateResponse = await app.inject({
+    method: 'POST',
+    url: `/api/v1/admin/users/${communitySession.userId}/deactivate`,
+    headers: {
+      authorization: `Bearer ${adminSession.accessToken}`
+    }
+  });
+
+  assert.equal(deactivateResponse.statusCode, 403);
+  assert.equal(deactivateResponse.json().error.code, 'FORBIDDEN');
+
+  await app.close();
+});
+
+test('super admin can list users with search and pagination', async () => {
+  await resetData();
+
+  const app = buildApp();
+  await signupCommunitySession(app, `customer-alpha-${Date.now()}@example.com`);
+  await signupAdminSession(app, `manager-beta-${Date.now()}@example.com`);
+  const superAdminSession = await signupSuperAdminSession(
+    app,
+    `customer-search-super-admin-${Date.now()}@example.com`
+  );
+
+  const searchResponse = await app.inject({
+    method: 'GET',
+    url: '/api/v1/admin/users?search=manager&page=1&limit=1',
+    headers: {
+      authorization: `Bearer ${superAdminSession.accessToken}`
+    }
+  });
+
+  assert.equal(searchResponse.statusCode, 200);
+  assert.equal(searchResponse.json().data.items.length, 1);
+  assert.equal(searchResponse.json().data.items[0].role, 'admin');
+  assert.match(searchResponse.json().data.items[0].email, /manager-beta-/);
+  assert.equal(searchResponse.json().meta.pagination.page, 1);
+  assert.equal(searchResponse.json().meta.pagination.limit, 1);
+  assert.equal(searchResponse.json().meta.pagination.total, 1);
+  assert.equal(searchResponse.json().meta.pagination.totalPages, 1);
+
+  await app.close();
+});
+
+test('super admin can deactivate and reactivate a user account safely', async () => {
+  await resetData();
+
+  const app = buildApp();
+  const targetEmail = `customer-toggle-${Date.now()}@example.com`;
+  const targetSession = await signupCommunitySession(app, targetEmail);
+  const superAdminSession = await signupSuperAdminSession(
+    app,
+    `customer-toggle-super-admin-${Date.now()}@example.com`
+  );
+
+  const deactivateResponse = await app.inject({
+    method: 'POST',
+    url: `/api/v1/admin/users/${targetSession.userId}/deactivate`,
+    headers: {
+      authorization: `Bearer ${superAdminSession.accessToken}`
+    }
+  });
+
+  assert.equal(deactivateResponse.statusCode, 200);
+  assert.equal(deactivateResponse.json().data.user.isActive, false);
+
+  const disabledLoginResponse = await app.inject({
+    method: 'POST',
+    url: '/api/v1/auth/login',
+    headers: {
+      'content-type': 'application/json'
+    },
+    payload: {
+      email: targetEmail,
+      password: 'StrongPass@123'
+    }
+  });
+
+  assert.equal(disabledLoginResponse.statusCode, 403);
+  assert.equal(disabledLoginResponse.json().error.code, 'ACCOUNT_DISABLED');
+
+  const reactivateResponse = await app.inject({
+    method: 'POST',
+    url: `/api/v1/admin/users/${targetSession.userId}/reactivate`,
+    headers: {
+      authorization: `Bearer ${superAdminSession.accessToken}`
+    }
+  });
+
+  assert.equal(reactivateResponse.statusCode, 200);
+  assert.equal(reactivateResponse.json().data.user.isActive, true);
+
+  const enabledLoginResponse = await app.inject({
+    method: 'POST',
+    url: '/api/v1/auth/login',
+    headers: {
+      'content-type': 'application/json'
+    },
+    payload: {
+      email: targetEmail,
+      password: 'StrongPass@123'
+    }
+  });
+
+  assert.equal(enabledLoginResponse.statusCode, 200);
+
+  await app.close();
+});
+
+test('super admin can trigger a safe password reset email for an active user', async () => {
+  await resetData();
+
+  const emailStub = createEmailStub();
+  const app = buildApp({ emailService: emailStub.service });
+  const targetEmail = `customer-reset-${Date.now()}@example.com`;
+  const targetSession = await signupCommunitySession(app, targetEmail);
+  const superAdminSession = await signupSuperAdminSession(
+    app,
+    `customer-reset-super-admin-${Date.now()}@example.com`
+  );
+
+  const passwordResetResponse = await app.inject({
+    method: 'POST',
+    url: `/api/v1/admin/users/${targetSession.userId}/password-reset`,
+    headers: {
+      authorization: `Bearer ${superAdminSession.accessToken}`
+    }
+  });
+
+  assert.equal(passwordResetResponse.statusCode, 200);
+  assert.equal(passwordResetResponse.json().data.success, true);
+  assert.equal(emailStub.sentEmails.length, 1);
+  assert.equal(emailStub.sentEmails[0].to, targetEmail);
+
+  const tokenRows = await pool.query(
+    `SELECT token_hash, consumed_at
+     FROM password_reset_tokens
+     WHERE user_id = $1`,
+    [targetSession.userId]
+  );
+
+  assert.equal(tokenRows.rowCount, 1);
+  assert.equal(tokenRows.rows[0].token_hash, hashToken(emailStub.sentEmails[0].resetToken));
+  assert.equal(tokenRows.rows[0].consumed_at, null);
+
+  await app.close();
+});
+
+test('unapproved mosque stays hidden from public APIs but visible to its owner admin flow', async () => {
+  await resetData();
+
+  const app = buildApp();
+  const adminSession = await signupAdminSession(
+    app,
+    `mosque-owner-admin-${Date.now()}@example.com`
+  );
+  const createdMosque = await createMosqueAsAdmin(app, adminSession.accessToken, {
+    name: 'Owner Pending Mosque'
+  });
+
+  const listResponse = await app.inject({
+    method: 'GET',
+    url: '/api/v1/mosques?city=Bengaluru&search=Owner%20Pending&sort=recent'
+  });
+
+  assert.equal(listResponse.statusCode, 200);
+  assert.equal(listResponse.json().data.items.length, 0);
+
+  const nearbyResponse = await app.inject({
+    method: 'GET',
+    url: '/api/v1/mosques/nearby?latitude=12.9716&longitude=77.5946&radius=5&limit=20'
+  });
+
+  assert.equal(nearbyResponse.statusCode, 200);
+  assert.equal(nearbyResponse.json().data.items.length, 0);
+
+  const publicDetailResponse = await app.inject({
+    method: 'GET',
+    url: `/api/v1/mosques/${createdMosque.id}`
+  });
+
+  assert.equal(publicDetailResponse.statusCode, 404);
+
+  const ownerMineResponse = await app.inject({
+    method: 'GET',
+    url: '/api/v1/mosques/mine',
+    headers: {
+      authorization: `Bearer ${adminSession.accessToken}`
+    }
+  });
+
+  assert.equal(ownerMineResponse.statusCode, 200);
+  assert.equal(ownerMineResponse.json().data.items.length, 1);
+  assert.equal(ownerMineResponse.json().data.items[0].id, createdMosque.id);
+  assert.equal(ownerMineResponse.json().data.items[0].isVerified, false);
+
+  const ownerDetailResponse = await app.inject({
+    method: 'GET',
+    url: `/api/v1/mosques/${createdMosque.id}`,
+    headers: {
+      authorization: `Bearer ${adminSession.accessToken}`
+    }
+  });
+
+  assert.equal(ownerDetailResponse.statusCode, 200);
+  assert.equal(ownerDetailResponse.json().data.id, createdMosque.id);
+  assert.equal(ownerDetailResponse.json().data.isVerified, false);
+  assert.equal(ownerDetailResponse.json().data.canEdit, true);
 
   await app.close();
 });
