@@ -5,6 +5,7 @@ import '../../data/auth_provider.dart';
 import '../../navigation/app_routes.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_tokens.dart';
+import '../../widgets/common/async_states.dart';
 import '../business_moderation/business_moderation_service.dart';
 import '../mosque_moderation/mosque_moderation_service.dart';
 import 'super_admin_models.dart';
@@ -25,6 +26,7 @@ class SuperAdminPanelScreen extends ConsumerStatefulWidget {
 
 class _SuperAdminPanelScreenState extends ConsumerState<SuperAdminPanelScreen> {
   final TextEditingController _searchController = TextEditingController();
+  final GlobalKey _customerSectionKey = GlobalKey();
 
   bool _requestedInitialLoad = false;
   bool _isOverviewLoading = false;
@@ -179,6 +181,20 @@ class _SuperAdminPanelScreenState extends ConsumerState<SuperAdminPanelScreen> {
   void _showMessage(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
+    );
+  }
+
+  Future<void> _scrollToCustomers() async {
+    final currentContext = _customerSectionKey.currentContext;
+    if (currentContext == null) {
+      return;
+    }
+
+    await Scrollable.ensureVisible(
+      currentContext,
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+      alignment: 0.08,
     );
   }
 
@@ -536,17 +552,79 @@ class _SuperAdminPanelScreenState extends ConsumerState<SuperAdminPanelScreen> {
       Future<void>.microtask(_loadAll);
     }
 
+    final customerSummaryLabel = _isCustomerLoading && _customerPage.total == 0
+        ? 'Loading...'
+        : _customerPage.total == 0
+            ? 'No accounts'
+            : '${_customerPage.total}';
+    final customerSummarySubtitle = _searchController.text.trim().isEmpty
+        ? 'Customer directory'
+        : 'Search results';
+    final summaryCards = <Widget>[
+      _SummaryStatCard(
+        key: const ValueKey('super-admin-summary-mosques'),
+        title: 'Pending mosques',
+        value: _isOverviewLoading && _pendingMosques.isEmpty
+            ? 'Loading...'
+            : _overviewError != null
+                ? 'Unavailable'
+                : '${_pendingMosques.length}',
+        subtitle: _overviewError != null
+            ? 'Queue status could not be loaded.'
+            : _pendingMosques.isEmpty
+                ? 'No mosque submissions need review.'
+                : _queuePreviewLabel(
+                    primaryLabel: _pendingMosques.first.name,
+                    remainingCount: _pendingMosques.length - 1,
+                  ),
+        actionLabel: 'Review',
+        onAction: () => Navigator.of(context).pushNamed(
+          AppRoutes.mosqueModeration,
+        ),
+      ),
+      _SummaryStatCard(
+        key: const ValueKey('super-admin-summary-businesses'),
+        title: 'Pending business listings',
+        value: _isOverviewLoading && _pendingBusinesses.isEmpty
+            ? 'Loading...'
+            : _overviewError != null
+                ? 'Unavailable'
+                : '${_pendingBusinesses.length}',
+        subtitle: _overviewError != null
+            ? 'Queue status could not be loaded.'
+            : _pendingBusinesses.isEmpty
+                ? 'No business listings need review.'
+                : _queuePreviewLabel(
+                    primaryLabel: _pendingBusinesses.first.businessName,
+                    remainingCount: _pendingBusinesses.length - 1,
+                  ),
+        actionLabel: 'Open Queue',
+        onAction: () => Navigator.of(context).pushNamed(
+          AppRoutes.businessModeration,
+        ),
+      ),
+      _SummaryStatCard(
+        key: const ValueKey('super-admin-summary-customers'),
+        title: 'Customers',
+        value: customerSummaryLabel,
+        subtitle: customerSummarySubtitle,
+        actionLabel: 'Manage Users',
+        onAction: _scrollToCustomers,
+      ),
+    ];
+
     return Scaffold(
       backgroundColor: const Color(0xFFF3F3EF),
       body: SafeArea(
         child: LayoutBuilder(
           builder: (context, constraints) {
             final isWide = constraints.maxWidth >= 980;
-            final content = [
+            final moderationCards = <Widget>[
               _PanelCard(
                 child: _ModerationSection(
-                  title: 'Mosques',
-                  subtitle: 'Pending mosque approvals and rejections',
+                  title: 'Mosque Queue',
+                  subtitle:
+                      'Review recent mosque submissions or jump into the full queue.',
                   count: _pendingMosques.length,
                   isLoading: _isOverviewLoading,
                   errorMessage: _overviewError,
@@ -555,6 +633,10 @@ class _SuperAdminPanelScreenState extends ConsumerState<SuperAdminPanelScreen> {
                   onAction: () => Navigator.of(context).pushNamed(
                     AppRoutes.mosqueModeration,
                   ),
+                  onRetry: _loadOverview,
+                  overflowLabel: _pendingMosques.length > 3
+                      ? '${_pendingMosques.length - 3} more mosque submissions waiting'
+                      : null,
                   children: _pendingMosques
                       .take(3)
                       .map(
@@ -589,16 +671,14 @@ class _SuperAdminPanelScreenState extends ConsumerState<SuperAdminPanelScreen> {
                         ),
                       )
                       .toList(growable: false),
-                  overflowLabel: _pendingMosques.length > 3
-                      ? '${_pendingMosques.length - 3} more mosque submissions waiting'
-                      : null,
                 ),
               ),
               const SizedBox(height: 16),
               _PanelCard(
                 child: _ModerationSection(
-                  title: 'Businesses',
-                  subtitle: 'Pending business listing approvals and rejections',
+                  title: 'Business Queue',
+                  subtitle:
+                      'Keep business approvals in the same operational flow as mosque moderation.',
                   count: _pendingBusinesses.length,
                   isLoading: _isOverviewLoading,
                   errorMessage: _overviewError,
@@ -607,6 +687,10 @@ class _SuperAdminPanelScreenState extends ConsumerState<SuperAdminPanelScreen> {
                   onAction: () => Navigator.of(context).pushNamed(
                     AppRoutes.businessModeration,
                   ),
+                  onRetry: _loadOverview,
+                  overflowLabel: _pendingBusinesses.length > 3
+                      ? '${_pendingBusinesses.length - 3} more business listings waiting'
+                      : null,
                   children: _pendingBusinesses
                       .take(3)
                       .map(
@@ -641,9 +725,6 @@ class _SuperAdminPanelScreenState extends ConsumerState<SuperAdminPanelScreen> {
                         ),
                       )
                       .toList(growable: false),
-                  overflowLabel: _pendingBusinesses.length > 3
-                      ? '${_pendingBusinesses.length - 3} more business listings waiting'
-                      : null,
                 ),
               ),
             ];
@@ -656,10 +737,12 @@ class _SuperAdminPanelScreenState extends ConsumerState<SuperAdminPanelScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _Header(
+                      _DashboardHeader(
                         onBack: () => Navigator.of(context).maybePop(),
                         onRefresh: _loadAll,
                       ),
+                      const SizedBox(height: 18),
+                      _ResponsiveCardGrid(children: summaryCards),
                       const SizedBox(height: 18),
                       if (isWide)
                         Row(
@@ -668,7 +751,16 @@ class _SuperAdminPanelScreenState extends ConsumerState<SuperAdminPanelScreen> {
                             Expanded(
                               flex: 5,
                               child: Column(
-                                children: content,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const _SectionHeading(
+                                    title: 'Moderation Queues',
+                                    subtitle:
+                                        'Live previews stay lightweight here so the dedicated moderation screens remain the source of truth.',
+                                  ),
+                                  const SizedBox(height: 12),
+                                  ...moderationCards,
+                                ],
                               ),
                             ),
                             const SizedBox(width: 16),
@@ -676,6 +768,7 @@ class _SuperAdminPanelScreenState extends ConsumerState<SuperAdminPanelScreen> {
                               flex: 6,
                               child: _PanelCard(
                                 child: _CustomersSection(
+                                  key: _customerSectionKey,
                                   currentUserId: user.id,
                                   page: _customerPage,
                                   isLoading: _isCustomerLoading,
@@ -698,16 +791,28 @@ class _SuperAdminPanelScreenState extends ConsumerState<SuperAdminPanelScreen> {
                                   onDeactivate: _deactivateCustomer,
                                   onReactivate: _reactivateCustomer,
                                   onPasswordReset: _triggerPasswordReset,
+                                  onRetry: () => _loadCustomers(
+                                    page: _customerPage.page == 0
+                                        ? 1
+                                        : _customerPage.page,
+                                  ),
                                 ),
                               ),
                             ),
                           ],
                         )
                       else ...[
-                        ...content,
+                        const _SectionHeading(
+                          title: 'Moderation Queues',
+                          subtitle:
+                              'Preview the current workload here, then open the full moderation screens when you need more detail.',
+                        ),
+                        const SizedBox(height: 12),
+                        ...moderationCards,
                         const SizedBox(height: 16),
                         _PanelCard(
                           child: _CustomersSection(
+                            key: _customerSectionKey,
                             currentUserId: user.id,
                             page: _customerPage,
                             isLoading: _isCustomerLoading,
@@ -730,6 +835,11 @@ class _SuperAdminPanelScreenState extends ConsumerState<SuperAdminPanelScreen> {
                             onDeactivate: _deactivateCustomer,
                             onReactivate: _reactivateCustomer,
                             onPasswordReset: _triggerPasswordReset,
+                            onRetry: () => _loadCustomers(
+                              page: _customerPage.page == 0
+                                  ? 1
+                                  : _customerPage.page,
+                            ),
                           ),
                         ),
                       ],
@@ -767,10 +877,25 @@ class _SuperAdminPanelScreenState extends ConsumerState<SuperAdminPanelScreen> {
     final month = months[local.month - 1];
     return '$month ${local.day}, ${local.year}';
   }
+
+  static String _queuePreviewLabel({
+    required String primaryLabel,
+    required int remainingCount,
+  }) {
+    if (primaryLabel.trim().isEmpty) {
+      return remainingCount > 0 ? '$remainingCount more waiting' : 'Ready';
+    }
+
+    if (remainingCount <= 0) {
+      return primaryLabel;
+    }
+
+    return '$primaryLabel +$remainingCount more';
+  }
 }
 
-class _Header extends StatelessWidget {
-  const _Header({
+class _DashboardHeader extends StatelessWidget {
+  const _DashboardHeader({
     required this.onBack,
     required this.onRefresh,
   });
@@ -780,42 +905,90 @@ class _Header extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        IconButton(
-          onPressed: onBack,
-          icon: const Icon(Icons.arrow_back_rounded),
-        ),
-        const SizedBox(width: 6),
-        Expanded(
-          child: Column(
+    return _PanelCard(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final isCompact = constraints.maxWidth < 560;
+          final refreshButton = isCompact
+              ? SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      onRefresh();
+                    },
+                    icon: const Icon(Icons.refresh_rounded),
+                    label: const Text('Refresh Workspace'),
+                  ),
+                )
+              : OutlinedButton.icon(
+                  onPressed: () {
+                    onRefresh();
+                  },
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: const Text('Refresh Workspace'),
+                );
+
+          if (isCompact) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    IconButton(
+                      onPressed: onBack,
+                      icon: const Icon(Icons.arrow_back_rounded),
+                    ),
+                    const SizedBox(width: 6),
+                    const Expanded(child: _HeaderCopy()),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                refreshButton,
+              ],
+            );
+          }
+
+          return Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'Admin Panel',
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.primaryText,
-                    ),
+              IconButton(
+                onPressed: onBack,
+                icon: const Icon(Icons.arrow_back_rounded),
               ),
-              const SizedBox(height: 6),
-              Text(
-                'Moderate mosques, review business listings, and handle customer account operations.',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: AppColors.secondaryText,
-                    ),
-              ),
+              const SizedBox(width: 6),
+              const Expanded(child: _HeaderCopy()),
+              const SizedBox(width: 12),
+              refreshButton,
             ],
-          ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _HeaderCopy extends StatelessWidget {
+  const _HeaderCopy();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Admin Panel',
+          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: AppColors.primaryText,
+              ),
         ),
-        const SizedBox(width: 12),
-        OutlinedButton.icon(
-          onPressed: () {
-            onRefresh();
-          },
-          icon: const Icon(Icons.refresh_rounded),
-          label: const Text('Refresh'),
+        const SizedBox(height: 6),
+        Text(
+          'A unified super-admin workspace for moderation queues and customer account operations.',
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: AppColors.secondaryText,
+              ),
         ),
       ],
     );
@@ -844,6 +1017,127 @@ class _PanelCard extends StatelessWidget {
   }
 }
 
+class _SectionHeading extends StatelessWidget {
+  const _SectionHeading({
+    required this.title,
+    required this.subtitle,
+  });
+
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: AppColors.primaryText,
+              ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          subtitle,
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: AppColors.secondaryText,
+              ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ResponsiveCardGrid extends StatelessWidget {
+  const _ResponsiveCardGrid({
+    required this.children,
+  });
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final maxWidth = constraints.maxWidth;
+        final columnCount = maxWidth >= 900
+            ? 3
+            : maxWidth >= 620
+                ? 2
+                : 1;
+        const spacing = 12.0;
+        final itemWidth =
+            (maxWidth - (spacing * (columnCount - 1))) / columnCount;
+
+        return Wrap(
+          spacing: spacing,
+          runSpacing: spacing,
+          children: children
+              .map((child) => SizedBox(width: itemWidth, child: child))
+              .toList(growable: false),
+        );
+      },
+    );
+  }
+}
+
+class _SummaryStatCard extends StatelessWidget {
+  const _SummaryStatCard({
+    super.key,
+    required this.title,
+    required this.value,
+    required this.subtitle,
+    required this.actionLabel,
+    required this.onAction,
+  });
+
+  final String title;
+  final String value;
+  final String subtitle;
+  final String actionLabel;
+  final VoidCallback onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    return _PanelCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.primaryText,
+                ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            value,
+            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.primaryText,
+                ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            subtitle,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: AppColors.secondaryText,
+                ),
+          ),
+          const SizedBox(height: 14),
+          OutlinedButton(
+            onPressed: onAction,
+            child: Text(actionLabel),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _ModerationSection extends StatelessWidget {
   const _ModerationSection({
     required this.title,
@@ -854,6 +1148,7 @@ class _ModerationSection extends StatelessWidget {
     required this.emptyMessage,
     required this.actionLabel,
     required this.onAction,
+    required this.onRetry,
     required this.children,
     required this.overflowLabel,
   });
@@ -866,6 +1161,7 @@ class _ModerationSection extends StatelessWidget {
   final String emptyMessage;
   final String actionLabel;
   final VoidCallback onAction;
+  final VoidCallback onRetry;
   final List<Widget> children;
   final String? overflowLabel;
 
@@ -898,34 +1194,25 @@ class _ModerationSection extends StatelessWidget {
                 ],
               ),
             ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: AppColors.surface,
-                borderRadius: BorderRadius.circular(AppRadius.pill),
-              ),
-              child: Text(
-                '$count pending',
-                style: const TextStyle(
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.primaryText,
-                ),
-              ),
-            ),
+            const SizedBox(width: 12),
+            _InfoPill(label: '$count pending'),
           ],
         ),
         const SizedBox(height: 16),
         if (isLoading)
-          const Center(child: CircularProgressIndicator())
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 18),
+            child: LoadingState(label: 'Loading queue...'),
+          )
         else if (errorMessage != null)
-          Text(
-            errorMessage!,
-            style: const TextStyle(color: AppColors.error),
+          ErrorState(
+            message: errorMessage!,
+            onRetry: onRetry,
           )
         else if (children.isEmpty)
-          Text(
-            emptyMessage,
-            style: const TextStyle(color: AppColors.mutedText),
+          EmptyState(
+            title: emptyMessage,
+            subtitle: 'The queue is clear for now.',
           )
         else ...[
           ...children,
@@ -1007,6 +1294,7 @@ class _ModerationItemCard extends StatelessWidget {
 
 class _CustomersSection extends StatelessWidget {
   const _CustomersSection({
+    super.key,
     required this.currentUserId,
     required this.page,
     required this.isLoading,
@@ -1020,6 +1308,7 @@ class _CustomersSection extends StatelessWidget {
     required this.onDeactivate,
     required this.onReactivate,
     required this.onPasswordReset,
+    required this.onRetry,
   });
 
   final String currentUserId;
@@ -1035,111 +1324,134 @@ class _CustomersSection extends StatelessWidget {
   final ValueChanged<SuperAdminCustomer> onDeactivate;
   final ValueChanged<SuperAdminCustomer> onReactivate;
   final ValueChanged<SuperAdminCustomer> onPasswordReset;
+  final VoidCallback onRetry;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Customers',
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w700,
-                color: AppColors.primaryText,
-              ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          'Search accounts and apply safe account actions.',
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: AppColors.secondaryText,
-              ),
-        ),
-        const SizedBox(height: 16),
-        Row(
-          children: [
-            Expanded(
-              child: TextField(
-                key: const ValueKey('super-admin-panel-customer-search'),
-                controller: searchController,
-                textInputAction: TextInputAction.search,
-                decoration: InputDecoration(
-                  hintText: 'Search by name or email',
-                  filled: true,
-                  fillColor: AppColors.surface,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(AppRadius.sm),
-                    borderSide: const BorderSide(color: AppColors.line),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(AppRadius.sm),
-                    borderSide: const BorderSide(color: AppColors.line),
-                  ),
-                ),
-                onSubmitted: (_) => onSearch(),
-              ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isCompact = constraints.maxWidth < 520;
+        final searchField = TextField(
+          key: const ValueKey('super-admin-panel-customer-search'),
+          controller: searchController,
+          textInputAction: TextInputAction.search,
+          decoration: InputDecoration(
+            hintText: 'Search by name or email',
+            filled: true,
+            fillColor: AppColors.surface,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(AppRadius.sm),
+              borderSide: const BorderSide(color: AppColors.line),
             ),
-            const SizedBox(width: 10),
-            FilledButton(
-              onPressed: onSearch,
-              child: const Text('Search'),
-            ),
-          ],
-        ),
-        const SizedBox(height: 14),
-        Text(
-          page.total == 0
-              ? 'No matching accounts found.'
-              : 'Showing ${page.items.length} of ${page.total} accounts',
-          style: const TextStyle(color: AppColors.mutedText),
-        ),
-        const SizedBox(height: 14),
-        if (isLoading)
-          const Center(child: CircularProgressIndicator())
-        else if (errorMessage != null)
-          Text(
-            errorMessage!,
-            style: const TextStyle(color: AppColors.error),
-          )
-        else if (page.items.isEmpty)
-          const Text(
-            'No customer accounts match the current search.',
-            style: TextStyle(color: AppColors.mutedText),
-          )
-        else
-          ...page.items.map(
-            (customer) => _CustomerTile(
-              customer: customer,
-              isProtected: customer.role == 'super_admin' ||
-                  customer.id == currentUserId,
-              isActing: isActingCustomerIds.contains(customer.id),
-              isResetting: resettingCustomerIds.contains(customer.id),
-              onDeactivate: () => onDeactivate(customer),
-              onReactivate: () => onReactivate(customer),
-              onPasswordReset: () => onPasswordReset(customer),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(AppRadius.sm),
+              borderSide: const BorderSide(color: AppColors.line),
             ),
           ),
-        if (page.totalPages > 1) ...[
-          const SizedBox(height: 14),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              OutlinedButton(
-                onPressed: onPreviousPage,
-                child: const Text('Previous'),
+          onSubmitted: (_) => onSearch(),
+        );
+        final searchButton = isCompact
+            ? SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: onSearch,
+                  child: const Text('Search'),
+                ),
+              )
+            : FilledButton(
+                onPressed: onSearch,
+                child: const Text('Search'),
+              );
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Customer Management',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.primaryText,
+                  ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Search accounts, confirm status at a glance, and apply safe customer actions without leaving the workspace.',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: AppColors.secondaryText,
+                  ),
+            ),
+            const SizedBox(height: 16),
+            if (isCompact) ...[
+              searchField,
+              const SizedBox(height: 10),
+              searchButton,
+            ] else
+              Row(
+                children: [
+                  Expanded(child: searchField),
+                  const SizedBox(width: 10),
+                  searchButton,
+                ],
               ),
-              Text(
-                'Page ${page.page} of ${page.totalPages}',
-                style: const TextStyle(color: AppColors.secondaryText),
+            const SizedBox(height: 14),
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                _InfoPill(
+                  label: page.total == 0
+                      ? 'No accounts'
+                      : '${page.total} total accounts',
+                ),
+                _InfoPill(
+                  label: page.items.isEmpty
+                      ? 'No visible results'
+                      : 'Showing ${page.items.length} results',
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            if (isLoading)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 18),
+                child: LoadingState(label: 'Loading customers...'),
+              )
+            else if (errorMessage != null)
+              ErrorState(
+                message: errorMessage!,
+                onRetry: onRetry,
+              )
+            else if (page.items.isEmpty)
+              const EmptyState(
+                title: 'No customer accounts found',
+                subtitle:
+                    'Try a different name or email to continue managing customer records.',
+              )
+            else
+              ...page.items.map(
+                (customer) => _CustomerTile(
+                  customer: customer,
+                  isProtected: customer.role == 'super_admin' ||
+                      customer.id == currentUserId,
+                  isActing: isActingCustomerIds.contains(customer.id),
+                  isResetting: resettingCustomerIds.contains(customer.id),
+                  onDeactivate: () => onDeactivate(customer),
+                  onReactivate: () => onReactivate(customer),
+                  onPasswordReset: () => onPasswordReset(customer),
+                ),
               ),
-              OutlinedButton(
-                onPressed: onNextPage,
-                child: const Text('Next'),
+            if (page.totalPages > 1) ...[
+              const SizedBox(height: 14),
+              _CustomerPagination(
+                page: page.page,
+                totalPages: page.totalPages,
+                onPreviousPage: onPreviousPage,
+                onNextPage: onNextPage,
               ),
             ],
-          ),
-        ],
-      ],
+          ],
+        );
+      },
     );
   }
 }
@@ -1168,111 +1480,132 @@ class _CustomerTile extends StatelessWidget {
     final fullName = customer.fullName.trim().isEmpty
         ? 'Unnamed account'
         : customer.fullName;
+    final statusLabel = customer.isActive ? 'Active' : 'Disabled';
+    final statusColor =
+        customer.isActive ? const Color(0xFFDCEBDD) : const Color(0xFFF0E2DF);
 
     return Container(
       key: ValueKey('super-admin-panel-customer-${customer.id}'),
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: Colors.white,
         borderRadius: BorderRadius.circular(AppRadius.sm),
+        border: Border.all(
+          color: customer.isActive ? AppColors.line : const Color(0xFFE2C9C3),
+        ),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final isCompact = constraints.maxWidth < 520;
+          final metadata = Wrap(
+            spacing: 8,
+            runSpacing: 8,
             children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      fullName,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.primaryText,
-                          ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      customer.email,
-                      style: const TextStyle(color: AppColors.secondaryText),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      'Role: ${_roleLabel(customer.role)}',
-                      style: const TextStyle(color: AppColors.mutedText),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Created: ${_SuperAdminPanelScreenState._formatDate(customer.createdAt)}',
-                      style: const TextStyle(color: AppColors.mutedText),
-                    ),
-                  ],
-                ),
-              ),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(
-                  color: customer.isActive
-                      ? const Color(0xFFDCEBDD)
-                      : AppColors.line,
-                  borderRadius: BorderRadius.circular(AppRadius.pill),
-                ),
-                child: Text(
-                  customer.isActive ? 'Active' : 'Disabled',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.primaryText,
-                  ),
-                ),
+              _InfoPill(label: statusLabel, backgroundColor: statusColor),
+              _InfoPill(label: _roleLabel(customer.role)),
+              _InfoPill(
+                label:
+                    'Created ${_SuperAdminPanelScreenState._formatDate(customer.createdAt)}',
               ),
             ],
-          ),
-          const SizedBox(height: 12),
-          if (isProtected)
-            const Text(
-              'Protected account',
-              style: TextStyle(
-                color: AppColors.mutedText,
-                fontWeight: FontWeight.w600,
-              ),
-            )
-          else
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                if (customer.isActive)
-                  OutlinedButton(
-                    key: ValueKey(
-                      'super-admin-panel-deactivate-${customer.id}',
-                    ),
-                    onPressed: isActing ? null : onDeactivate,
-                    child: const Text('Deactivate'),
-                  )
-                else
-                  OutlinedButton(
-                    key: ValueKey(
-                      'super-admin-panel-reactivate-${customer.id}',
-                    ),
-                    onPressed: isActing ? null : onReactivate,
-                    child: const Text('Reactivate'),
-                  ),
-                FilledButton(
+          );
+          final actionButtons = <Widget>[
+            if (customer.isActive)
+              _CustomerActionButton(
+                child: OutlinedButton(
                   key: ValueKey(
-                    'super-admin-panel-password-reset-${customer.id}',
+                    'super-admin-panel-deactivate-${customer.id}',
                   ),
-                  onPressed: isResetting || !customer.isActive
-                      ? null
-                      : onPasswordReset,
-                  child: const Text('Send reset email'),
+                  onPressed: isActing ? null : onDeactivate,
+                  child: Text(isActing ? 'Updating...' : 'Deactivate'),
                 ),
-              ],
+              )
+            else
+              _CustomerActionButton(
+                child: OutlinedButton(
+                  key: ValueKey(
+                    'super-admin-panel-reactivate-${customer.id}',
+                  ),
+                  onPressed: isActing ? null : onReactivate,
+                  child: Text(isActing ? 'Updating...' : 'Reactivate'),
+                ),
+              ),
+            _CustomerActionButton(
+              child: FilledButton(
+                key: ValueKey(
+                  'super-admin-panel-password-reset-${customer.id}',
+                ),
+                onPressed:
+                    isResetting || !customer.isActive ? null : onPasswordReset,
+                child: Text(isResetting ? 'Sending...' : 'Send reset email'),
+              ),
             ),
-        ],
+          ];
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (isCompact) ...[
+                Text(
+                  fullName,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.primaryText,
+                      ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  customer.email,
+                  style: const TextStyle(color: AppColors.secondaryText),
+                ),
+                const SizedBox(height: 10),
+                metadata,
+              ] else ...[
+                Text(
+                  fullName,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.primaryText,
+                      ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  customer.email,
+                  style: const TextStyle(color: AppColors.secondaryText),
+                ),
+                const SizedBox(height: 10),
+                metadata,
+              ],
+              const SizedBox(height: 12),
+              if (isProtected)
+                const Text(
+                  'Protected account',
+                  style: TextStyle(
+                    color: AppColors.mutedText,
+                    fontWeight: FontWeight.w600,
+                  ),
+                )
+              else if (isCompact)
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    for (var i = 0; i < actionButtons.length; i++) ...[
+                      actionButtons[i],
+                      if (i != actionButtons.length - 1)
+                        const SizedBox(height: 8),
+                    ],
+                  ],
+                )
+              else
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: actionButtons,
+                ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -1286,6 +1619,123 @@ class _CustomerTile extends StatelessWidget {
       default:
         return 'Community';
     }
+  }
+}
+
+class _CustomerPagination extends StatelessWidget {
+  const _CustomerPagination({
+    required this.page,
+    required this.totalPages,
+    required this.onPreviousPage,
+    required this.onNextPage,
+  });
+
+  final int page;
+  final int totalPages;
+  final VoidCallback? onPreviousPage;
+  final VoidCallback? onNextPage;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isCompact = constraints.maxWidth < 420;
+        if (isCompact) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Page $page of $totalPages',
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: AppColors.secondaryText),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: onPreviousPage,
+                      child: const Text('Previous'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: onNextPage,
+                      child: const Text('Next'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          );
+        }
+
+        return Row(
+          children: [
+            OutlinedButton(
+              onPressed: onPreviousPage,
+              child: const Text('Previous'),
+            ),
+            Expanded(
+              child: Text(
+                'Page $page of $totalPages',
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: AppColors.secondaryText),
+              ),
+            ),
+            OutlinedButton(
+              onPressed: onNextPage,
+              child: const Text('Next'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _InfoPill extends StatelessWidget {
+  const _InfoPill({
+    required this.label,
+    this.backgroundColor,
+  });
+
+  final String label;
+  final Color? backgroundColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: backgroundColor ?? AppColors.surface,
+        borderRadius: BorderRadius.circular(AppRadius.pill),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          fontWeight: FontWeight.w600,
+          color: AppColors.primaryText,
+        ),
+      ),
+    );
+  }
+}
+
+class _CustomerActionButton extends StatelessWidget {
+  const _CustomerActionButton({
+    required this.child,
+  });
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 170,
+      child: child,
+    );
   }
 }
 

@@ -19,18 +19,18 @@ class BusinessRegistrationBasicHeader extends StatelessWidget {
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(18, 14, 18, 0),
+          padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
           child: Row(
             children: [
               IconButton(
                 onPressed: onBack,
                 padding: EdgeInsets.zero,
                 constraints:
-                    const BoxConstraints.tightFor(width: 40, height: 40),
-                splashRadius: 22,
+                    const BoxConstraints.tightFor(width: 36, height: 36),
+                splashRadius: 20,
                 icon: const Icon(
                   Icons.arrow_back_rounded,
-                  size: 34,
+                  size: 28,
                   color: AppColors.primaryText,
                 ),
               ),
@@ -40,19 +40,19 @@ class BusinessRegistrationBasicHeader extends StatelessWidget {
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontFamily: AppTypography.figtreeFamily,
-                    fontSize: 23,
+                    fontSize: 20,
                     fontWeight: FontWeight.w700,
                     color: AppColors.primaryText,
                   ),
                 ),
               ),
-              const SizedBox(width: 40),
+              const SizedBox(width: 36),
             ],
           ),
         ),
-        const SizedBox(height: 18),
+        const SizedBox(height: 12),
         const Padding(
-          padding: EdgeInsets.fromLTRB(32, 0, 32, 0),
+          padding: EdgeInsets.fromLTRB(24, 0, 24, 0),
           child: BusinessRegistrationStepProgress(
             currentStep: 1,
             totalSteps: 2,
@@ -60,7 +60,7 @@ class BusinessRegistrationBasicHeader extends StatelessWidget {
             nextLabel: 'Contact & Location',
           ),
         ),
-        const SizedBox(height: 18),
+        const SizedBox(height: 12),
         Divider(height: 1, thickness: 1, color: dividerColor),
       ],
     );
@@ -91,14 +91,14 @@ class BusinessRegistrationStepProgress extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         SizedBox(
-          height: 34,
+          height: 28,
           child: Stack(
             alignment: Alignment.center,
             children: [
               Positioned(
-                left: 20,
-                right: 20,
-                child: Container(height: 5, color: lineColor),
+                left: 16,
+                right: 16,
+                child: Container(height: 3, color: lineColor),
               ),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -118,7 +118,7 @@ class BusinessRegistrationStepProgress extends StatelessWidget {
             ],
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 6),
         Row(
           children: [
             Expanded(
@@ -126,8 +126,8 @@ class BusinessRegistrationStepProgress extends StatelessWidget {
                 currentLabel,
                 style: const TextStyle(
                   fontFamily: AppTypography.figtreeFamily,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
                   color: AppColors.primaryText,
                 ),
               ),
@@ -138,7 +138,7 @@ class BusinessRegistrationStepProgress extends StatelessWidget {
                 textAlign: TextAlign.right,
                 style: TextStyle(
                   fontFamily: AppTypography.figtreeFamily,
-                  fontSize: 18,
+                  fontSize: 14,
                   fontWeight: FontWeight.w500,
                   color: AppColors.secondaryText.withValues(alpha: 0.88),
                 ),
@@ -165,18 +165,18 @@ class _ProgressStop extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 38,
-      height: 38,
+      width: 30,
+      height: 30,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: active ? inactiveCircleColor : AppColors.background,
-        border: Border.all(color: lineColor, width: 2),
+        border: Border.all(color: lineColor, width: 1.5),
       ),
       child: active
           ? Center(
               child: Container(
-                width: 16,
-                height: 16,
+                width: 10,
+                height: 10,
                 decoration: const BoxDecoration(
                   shape: BoxShape.circle,
                   color: AppColors.secondaryText,
@@ -205,8 +205,8 @@ class BusinessRegistrationSectionLabel extends StatelessWidget {
         text: text,
         style: const TextStyle(
           fontFamily: AppTypography.figtreeFamily,
-          fontSize: 21,
-          fontWeight: FontWeight.w500,
+          fontSize: 16,
+          fontWeight: FontWeight.w600,
           color: AppColors.primaryText,
         ),
         children: [
@@ -253,13 +253,14 @@ class BusinessRegistrationTextField extends StatelessWidget {
       controller: controller,
       minLines: minLines,
       maxLines: maxLines,
+      scrollPadding: _keyboardAwareScrollPadding(context),
       textInputAction: textInputAction,
       readOnly: readOnly,
       onTap: onTap,
       style: const TextStyle(
         fontFamily: AppTypography.figtreeFamily,
-        fontSize: 18,
-        height: 1.35,
+        fontSize: 15,
+        height: 1.25,
         fontWeight: FontWeight.w400,
         color: AppColors.primaryText,
       ),
@@ -267,28 +268,28 @@ class BusinessRegistrationTextField extends StatelessWidget {
         hintText: hintText,
         hintStyle: TextStyle(
           fontFamily: AppTypography.figtreeFamily,
-          fontSize: 18,
+          fontSize: 15,
           fontWeight: FontWeight.w400,
           color: AppColors.mutedText.withValues(alpha: 0.8),
         ),
         filled: true,
         fillColor: fillColor,
         contentPadding: EdgeInsets.fromLTRB(
-          24,
-          minLines == 1 ? 22 : 20,
-          24,
-          minLines == 1 ? 22 : 24,
+          18,
+          minLines == 1 ? 16 : 14,
+          18,
+          minLines == 1 ? 16 : 18,
         ),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(22),
+          borderRadius: BorderRadius.circular(18),
           borderSide: BorderSide.none,
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(22),
+          borderRadius: BorderRadius.circular(18),
           borderSide: BorderSide.none,
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(22),
+          borderRadius: BorderRadius.circular(18),
           borderSide: BorderSide(
             color: AppColors.secondaryText.withValues(alpha: 0.34),
             width: 1.2,
@@ -321,14 +322,14 @@ class BusinessRegistrationLogoUploadCard extends StatelessWidget {
 
     return Material(
       color: fillColor,
-      borderRadius: BorderRadius.circular(24),
+      borderRadius: BorderRadius.circular(20),
       child: InkWell(
         onTap: isLoading ? null : onTap,
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(20),
         child: SizedBox(
           width: double.infinity,
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 22),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
             child: logo == null
                 ? _EmptyLogoUploadState(isLoading: isLoading)
                 : Stack(
@@ -339,10 +340,10 @@ class BusinessRegistrationLogoUploadCard extends StatelessWidget {
                         right: 0,
                         child: IconButton(
                           onPressed: isLoading ? null : onRemove,
-                          splashRadius: 20,
+                          splashRadius: 18,
                           icon: const Icon(
                             Icons.close_rounded,
-                            size: 32,
+                            size: 24,
                             color: AppColors.primaryText,
                           ),
                         ),
@@ -368,7 +369,7 @@ class _EmptyLogoUploadState extends StatelessWidget {
     final mutedColor = AppColors.secondaryText.withValues(alpha: 0.56);
 
     return SizedBox(
-      height: 200,
+      height: 152,
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -384,16 +385,16 @@ class _EmptyLogoUploadState extends StatelessWidget {
           else
             Icon(
               Icons.file_upload_outlined,
-              size: 48,
+              size: 34,
               color: mutedColor,
             ),
-          const SizedBox(height: 18),
+          const SizedBox(height: 12),
           RichText(
             textAlign: TextAlign.center,
             text: const TextSpan(
               style: TextStyle(
                 fontFamily: AppTypography.figtreeFamily,
-                fontSize: 18,
+                fontSize: 15,
                 fontWeight: FontWeight.w400,
                 color: AppColors.primaryText,
               ),
@@ -428,12 +429,12 @@ class _LogoPreviewTile extends StatelessWidget {
     final preview = logo.previewImage;
 
     return Container(
-      width: 198,
-      height: 198,
-      padding: const EdgeInsets.all(16),
+      width: 164,
+      height: 164,
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: logo.tileBackgroundColor,
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(20),
       ),
       child: preview == null
           ? Center(
@@ -451,7 +452,7 @@ class _LogoPreviewTile extends StatelessWidget {
               ),
             )
           : ClipRRect(
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(14),
               child: Image(
                 image: preview,
                 fit: BoxFit.contain,
@@ -491,19 +492,19 @@ class BusinessRegistrationTaxonomySelector extends StatelessWidget {
     final dividerColor = AppColors.secondaryText.withValues(alpha: 0.28);
     final placeholderStyle = TextStyle(
       fontFamily: AppTypography.figtreeFamily,
-      fontSize: 18,
+      fontSize: 15,
       fontWeight: FontWeight.w400,
       color: AppColors.mutedText.withValues(alpha: 0.88),
     );
     const selectedStyle = TextStyle(
       fontFamily: AppTypography.figtreeFamily,
-      fontSize: 18,
+      fontSize: 15,
       fontWeight: FontWeight.w400,
       color: AppColors.primaryText,
     );
 
     return ClipRRect(
-      borderRadius: BorderRadius.circular(22),
+      borderRadius: BorderRadius.circular(18),
       child: Material(
         color: fillColor,
         child: AnimatedSize(
@@ -516,7 +517,7 @@ class BusinessRegistrationTaxonomySelector extends StatelessWidget {
               InkWell(
                 onTap: onToggleExpanded,
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 22, 20, 22),
+                  padding: const EdgeInsets.fromLTRB(18, 16, 16, 16),
                   child: Row(
                     children: [
                       Expanded(
@@ -533,7 +534,7 @@ class BusinessRegistrationTaxonomySelector extends StatelessWidget {
                         isExpanded
                             ? Icons.keyboard_arrow_up_rounded
                             : Icons.keyboard_arrow_down_rounded,
-                        size: 32,
+                        size: 24,
                         color: AppColors.primaryText,
                       ),
                     ],
@@ -583,7 +584,7 @@ class _TaxonomyGroupRow extends StatelessWidget {
         InkWell(
           onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(24, 16, 18, 16),
+            padding: const EdgeInsets.fromLTRB(18, 14, 14, 14),
             child: Row(
               children: [
                 Expanded(
@@ -591,18 +592,18 @@ class _TaxonomyGroupRow extends StatelessWidget {
                     group.label,
                     style: const TextStyle(
                       fontFamily: AppTypography.figtreeFamily,
-                      fontSize: 18,
+                      fontSize: 15,
                       fontWeight: FontWeight.w500,
                       color: AppColors.primaryText,
                     ),
                   ),
                 ),
-                const SizedBox(width: 14),
+                const SizedBox(width: 10),
                 Icon(
                   isExpanded
                       ? Icons.arrow_drop_up_rounded
                       : Icons.arrow_drop_down_rounded,
-                  size: 36,
+                  size: 28,
                   color: AppColors.primaryText,
                 ),
               ],
@@ -611,7 +612,7 @@ class _TaxonomyGroupRow extends StatelessWidget {
         ),
         if (isExpanded)
           Padding(
-            padding: const EdgeInsets.fromLTRB(24, 0, 20, 16),
+            padding: const EdgeInsets.fromLTRB(18, 0, 16, 14),
             child: Column(
               children: [
                 for (int index = 0; index < group.items.length; index++) ...[
@@ -646,25 +647,25 @@ class _TaxonomyChildRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(12),
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 9),
+        padding: const EdgeInsets.symmetric(vertical: 7),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const SizedBox(width: 10),
+            const SizedBox(width: 8),
             const SizedBox(
-              width: 22,
-              height: 22,
+              width: 18,
+              height: 18,
               child: CustomPaint(painter: _BranchPainter()),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 8),
             Expanded(
               child: Text(
                 item.label,
                 style: TextStyle(
                   fontFamily: AppTypography.figtreeFamily,
-                  fontSize: 17,
+                  fontSize: 14,
                   fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
                   color: AppColors.primaryText,
                 ),
@@ -710,6 +711,7 @@ class BusinessRegistrationFooter extends StatelessWidget {
     super.key,
     required this.canContinue,
     required this.showSaveDraft,
+    this.isKeyboardVisible = false,
     this.nextButtonLabel = 'Next',
     required this.onNext,
     required this.onSaveDraftAndClose,
@@ -717,6 +719,7 @@ class BusinessRegistrationFooter extends StatelessWidget {
 
   final bool canContinue;
   final bool showSaveDraft;
+  final bool isKeyboardVisible;
   final String nextButtonLabel;
   final VoidCallback onNext;
   final VoidCallback onSaveDraftAndClose;
@@ -724,72 +727,96 @@ class BusinessRegistrationFooter extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final buttonColor = canContinue ? AppColors.accentSoft : AppColors.disabled;
+    final bool isCompact = isKeyboardVisible;
+    final bool showHelperText = !isCompact;
+    final bool showSaveDraftAction = showSaveDraft && !isCompact;
 
     return SafeArea(
       top: false,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 10, 20, 18),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'Please fill all the input fields to proceed',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontFamily: AppTypography.figtreeFamily,
-                fontSize: 16,
-                fontWeight: FontWeight.w400,
-                color: AppColors.secondaryText.withValues(alpha: 0.78),
-              ),
-            ),
-            const SizedBox(height: 18),
-            SizedBox(
-              width: double.infinity,
-              height: 86,
-              child: ElevatedButton(
-                onPressed: canContinue ? onNext : null,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: buttonColor,
-                  disabledBackgroundColor: AppColors.disabled,
-                  foregroundColor: AppColors.background,
-                  disabledForegroundColor: AppColors.background,
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(24),
-                  ),
-                  textStyle: const TextStyle(
-                    fontFamily: AppTypography.figtreeFamily,
-                    fontSize: 28,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                child: Text(nextButtonLabel),
-              ),
-            ),
-            AnimatedSwitcher(
-              duration: const Duration(milliseconds: 180),
-              child: showSaveDraft
-                  ? Padding(
-                      padding: const EdgeInsets.only(top: 20),
-                      child: TextButton(
-                        onPressed: onSaveDraftAndClose,
-                        style: TextButton.styleFrom(
-                          foregroundColor: AppColors.accentSoft,
-                          textStyle: const TextStyle(
-                            fontFamily: AppTypography.figtreeFamily,
-                            fontSize: 19,
-                            fontWeight: FontWeight.w600,
-                            decoration: TextDecoration.underline,
-                          ),
+      child: AnimatedSize(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+        alignment: Alignment.topCenter,
+        child: AnimatedContainer(
+          key: const ValueKey('business-registration-basic-footer-container'),
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOut,
+          padding: EdgeInsets.fromLTRB(
+              20, isCompact ? 4 : 8, 20, isCompact ? 8 : 14),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 160),
+                child: showHelperText
+                    ? Text(
+                        'Please fill all the input fields to proceed',
+                        key: const ValueKey('business-registration-helper'),
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontFamily: AppTypography.figtreeFamily,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w400,
+                          color:
+                              AppColors.secondaryText.withValues(alpha: 0.78),
                         ),
-                        child: const Text('Save as draft & close'),
-                      ),
-                    )
-                  : const SizedBox.shrink(),
-            ),
-          ],
+                      )
+                    : const SizedBox.shrink(),
+              ),
+              SizedBox(height: showHelperText ? 12 : 0),
+              SizedBox(
+                width: double.infinity,
+                height: 58,
+                child: ElevatedButton(
+                  onPressed: canContinue ? onNext : null,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: buttonColor,
+                    disabledBackgroundColor: AppColors.disabled,
+                    foregroundColor: AppColors.background,
+                    disabledForegroundColor: AppColors.background,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    textStyle: const TextStyle(
+                      fontFamily: AppTypography.figtreeFamily,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  child: Text(nextButtonLabel),
+                ),
+              ),
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 180),
+                child: showSaveDraftAction
+                    ? Padding(
+                        padding: const EdgeInsets.only(top: 14),
+                        child: TextButton(
+                          onPressed: onSaveDraftAndClose,
+                          style: TextButton.styleFrom(
+                            foregroundColor: AppColors.accentSoft,
+                            textStyle: const TextStyle(
+                              fontFamily: AppTypography.figtreeFamily,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                              decoration: TextDecoration.underline,
+                            ),
+                          ),
+                          child: const Text('Save as draft & close'),
+                        ),
+                      )
+                    : const SizedBox.shrink(),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
+}
+
+EdgeInsets _keyboardAwareScrollPadding(BuildContext context) {
+  final double keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
+  return EdgeInsets.fromLTRB(24, 24, 24, keyboardInset + 140);
 }

@@ -268,197 +268,211 @@ class _BusinessRegistrationContactScreenState
   @override
   Widget build(BuildContext context) {
     final draft = _draft;
-    final viewInsets = MediaQuery.of(context).viewInsets.bottom;
+    final double viewInsets = MediaQuery.viewInsetsOf(context).bottom;
+    final bool isKeyboardVisible = viewInsets > 0;
+    final double footerReservedSpace =
+        isKeyboardVisible ? 88 : (widget.showSaveDraftAction ? 146 : 112);
 
     return BusinessRegistrationContactScaffold(
+      bottomInset: viewInsets,
       child: Form(
         key: _formKey,
-        child: SingleChildScrollView(
-          padding: EdgeInsets.only(bottom: viewInsets + 32),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              BusinessRegistrationHeader(
-                onBackPressed: widget.onBackPressed ??
-                    () => Navigator.of(context).maybePop(),
-              ),
-              const BusinessRegistrationProgressIndicator(),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
+        child: Column(
+          children: [
+            Expanded(
+              child: SingleChildScrollView(
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
+                padding: EdgeInsets.only(bottom: footerReservedSpace + 20),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const BusinessRegistrationFieldLabel(
-                      text: 'Business Email',
-                      required: true,
+                    BusinessRegistrationHeader(
+                      onBackPressed: widget.onBackPressed ??
+                          () => Navigator.of(context).maybePop(),
                     ),
-                    const SizedBox(height: 10),
-                    BusinessRegistrationTextField(
-                      controller: _businessEmailController,
-                      keyboardType: TextInputType.emailAddress,
-                      textInputAction: TextInputAction.next,
-                      validator: _validateBusinessEmail,
-                    ),
-                    const SizedBox(height: 16),
-                    const BusinessRegistrationFieldLabel(
-                      text: 'Phone No',
-                      required: true,
-                    ),
-                    const SizedBox(height: 10),
-                    BusinessRegistrationTextField(
-                      controller: _phoneController,
-                      keyboardType: TextInputType.phone,
-                      textInputAction: TextInputAction.next,
-                      validator: _validatePhone,
-                    ),
-                    const SizedBox(height: 16),
-                    const BusinessRegistrationFieldLabel(text: 'WhatsApp'),
-                    const SizedBox(height: 10),
-                    BusinessRegistrationTextField(
-                      controller: _whatsappController,
-                      keyboardType: TextInputType.phone,
-                      textInputAction: TextInputAction.next,
-                      validator: _validateWhatsapp,
-                    ),
-                    const SizedBox(height: 16),
-                    const BusinessRegistrationFieldLabel(
-                      text: 'Operating Hours',
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: BusinessRegistrationTimeField(
-                            label: 'Start time',
-                            value: _formattedTime(_openingTime),
-                            onTap: _pickOpeningTime,
+                    const BusinessRegistrationProgressIndicator(),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          const BusinessRegistrationFieldLabel(
+                            text: 'Business Email',
+                            required: true,
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: BusinessRegistrationTimeField(
-                            label: 'End time',
-                            value: _formattedTime(_closingTime),
-                            onTap: _pickClosingTime,
+                          const SizedBox(height: 8),
+                          BusinessRegistrationTextField(
+                            controller: _businessEmailController,
+                            keyboardType: TextInputType.emailAddress,
+                            textInputAction: TextInputAction.next,
+                            validator: _validateBusinessEmail,
                           ),
-                        ),
-                      ],
-                    ),
-                    if (_showHoursError) ...[
-                      const SizedBox(height: 6),
-                      const Text(
-                        'Select both start and end time.',
-                        style: TextStyle(
-                          fontFamily: 'Figtree',
-                          fontSize: 11.5,
-                          color: Color(0xFFC27265),
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 16),
-                    const BusinessRegistrationFieldLabel(text: 'Links'),
-                    const SizedBox(height: 10),
-                    BusinessRegistrationLinkField(
-                      controller: _instagramController,
-                      icon: Icons.camera_alt_rounded,
-                      hintText: 'Instagram link',
-                    ),
-                    const SizedBox(height: 10),
-                    BusinessRegistrationLinkField(
-                      controller: _facebookController,
-                      icon: Icons.facebook_rounded,
-                      hintText: 'Facebook page link',
-                    ),
-                    const SizedBox(height: 10),
-                    BusinessRegistrationLinkField(
-                      controller: _websiteController,
-                      icon: Icons.public_rounded,
-                      hintText: 'Website link',
-                    ),
-                    const SizedBox(height: 16),
-                    const BusinessRegistrationFieldLabel(
-                      text: 'Business Address',
-                    ),
-                    const SizedBox(height: 10),
-                    BusinessRegistrationTextField(
-                      controller: _addressController,
-                      keyboardType: TextInputType.streetAddress,
-                      textInputAction: TextInputAction.newline,
-                      minLines: 2,
-                      maxLines: 3,
-                      validator: _validateAddress,
-                    ),
-                    const SizedBox(height: 16),
-                    const BusinessRegistrationFieldLabel(text: 'Zip Code'),
-                    const SizedBox(height: 10),
-                    BusinessRegistrationTextField(
-                      controller: _zipCodeController,
-                      keyboardType: TextInputType.number,
-                      textInputAction: TextInputAction.next,
-                      validator: _validateZipCode,
-                    ),
-                    const SizedBox(height: 16),
-                    const BusinessRegistrationFieldLabel(text: 'City'),
-                    const SizedBox(height: 10),
-                    BusinessRegistrationTextField(
-                      controller: _cityController,
-                      textInputAction: TextInputAction.done,
-                      validator: _validateCity,
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Checkbox(
-                          value: _onlineOnly,
-                          onChanged: (value) {
-                            setState(() => _onlineOnly = value ?? false);
-                            widget.onChanged?.call(_draft);
-                            _formKey.currentState?.validate();
-                          },
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(4),
+                          const SizedBox(height: 14),
+                          const BusinessRegistrationFieldLabel(
+                            text: 'Phone No',
+                            required: true,
                           ),
-                          side: const BorderSide(
-                            color: Color(0xFF4E665C),
-                            width: 1.6,
+                          const SizedBox(height: 8),
+                          BusinessRegistrationTextField(
+                            controller: _phoneController,
+                            keyboardType: TextInputType.phone,
+                            textInputAction: TextInputAction.next,
+                            validator: _validatePhone,
                           ),
-                          activeColor: const Color(0xFF4E665C),
-                          visualDensity: VisualDensity.compact,
-                        ),
-                        const SizedBox(width: 4),
-                        const Expanded(
-                          child: Padding(
-                            padding: EdgeInsets.only(top: 8),
-                            child: Text(
-                              'This business operates online and is not tied to a specific location.',
+                          const SizedBox(height: 14),
+                          const BusinessRegistrationFieldLabel(
+                              text: 'WhatsApp'),
+                          const SizedBox(height: 8),
+                          BusinessRegistrationTextField(
+                            controller: _whatsappController,
+                            keyboardType: TextInputType.phone,
+                            textInputAction: TextInputAction.next,
+                            validator: _validateWhatsapp,
+                          ),
+                          const SizedBox(height: 14),
+                          const BusinessRegistrationFieldLabel(
+                            text: 'Operating Hours',
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: BusinessRegistrationTimeField(
+                                  label: 'Start time',
+                                  value: _formattedTime(_openingTime),
+                                  onTap: _pickOpeningTime,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: BusinessRegistrationTimeField(
+                                  label: 'End time',
+                                  value: _formattedTime(_closingTime),
+                                  onTap: _pickClosingTime,
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (_showHoursError) ...[
+                            const SizedBox(height: 6),
+                            const Text(
+                              'Select both start and end time.',
                               style: TextStyle(
                                 fontFamily: 'Figtree',
-                                fontSize: 15,
-                                height: 1.2,
-                                color: Color(0xFF5A6761),
+                                fontSize: 11.5,
+                                color: Color(0xFFC27265),
                               ),
                             ),
+                          ],
+                          const SizedBox(height: 14),
+                          const BusinessRegistrationFieldLabel(text: 'Links'),
+                          const SizedBox(height: 8),
+                          BusinessRegistrationLinkField(
+                            controller: _instagramController,
+                            icon: Icons.camera_alt_rounded,
+                            hintText: 'Instagram link',
                           ),
-                        ),
-                      ],
+                          const SizedBox(height: 8),
+                          BusinessRegistrationLinkField(
+                            controller: _facebookController,
+                            icon: Icons.facebook_rounded,
+                            hintText: 'Facebook page link',
+                          ),
+                          const SizedBox(height: 8),
+                          BusinessRegistrationLinkField(
+                            controller: _websiteController,
+                            icon: Icons.public_rounded,
+                            hintText: 'Website link',
+                          ),
+                          const SizedBox(height: 14),
+                          const BusinessRegistrationFieldLabel(
+                            text: 'Business Address',
+                          ),
+                          const SizedBox(height: 8),
+                          BusinessRegistrationTextField(
+                            controller: _addressController,
+                            keyboardType: TextInputType.streetAddress,
+                            textInputAction: TextInputAction.newline,
+                            minLines: 2,
+                            maxLines: 3,
+                            validator: _validateAddress,
+                          ),
+                          const SizedBox(height: 14),
+                          const BusinessRegistrationFieldLabel(
+                              text: 'Zip Code'),
+                          const SizedBox(height: 8),
+                          BusinessRegistrationTextField(
+                            controller: _zipCodeController,
+                            keyboardType: TextInputType.number,
+                            textInputAction: TextInputAction.next,
+                            validator: _validateZipCode,
+                          ),
+                          const SizedBox(height: 14),
+                          const BusinessRegistrationFieldLabel(text: 'City'),
+                          const SizedBox(height: 8),
+                          BusinessRegistrationTextField(
+                            controller: _cityController,
+                            textInputAction: TextInputAction.done,
+                            validator: _validateCity,
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Checkbox(
+                                value: _onlineOnly,
+                                onChanged: (value) {
+                                  setState(() => _onlineOnly = value ?? false);
+                                  widget.onChanged?.call(_draft);
+                                  _formKey.currentState?.validate();
+                                },
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                side: const BorderSide(
+                                  color: Color(0xFF4E665C),
+                                  width: 1.6,
+                                ),
+                                activeColor: const Color(0xFF4E665C),
+                                visualDensity: VisualDensity.compact,
+                              ),
+                              const SizedBox(width: 4),
+                              const Expanded(
+                                child: Padding(
+                                  padding: EdgeInsets.only(top: 8),
+                                  child: Text(
+                                    'This business operates online and is not tied to a specific location.',
+                                    style: TextStyle(
+                                      fontFamily: 'Figtree',
+                                      fontSize: 14,
+                                      height: 1.2,
+                                      color: Color(0xFF5A6761),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                        ],
+                      ),
                     ),
-                    const SizedBox(height: 28),
-                    BusinessRegistrationSubmitSection(
-                      submitEnabled: draft.isSubmitReady,
-                      isSubmitting: widget.isSubmitting,
-                      isSavingDraft: widget.isSavingDraft,
-                      showSaveDraftAction: widget.showSaveDraftAction,
-                      submitButtonLabel: widget.submitButtonLabel,
-                      onSubmitPressed: _handleSubmitPressed,
-                      onSaveDraftPressed: _handleSaveDraftPressed,
-                    ),
-                    const SizedBox(height: 40),
                   ],
                 ),
               ),
-            ],
-          ),
+            ),
+            BusinessRegistrationSubmitSection(
+              submitEnabled: draft.isSubmitReady,
+              isSubmitting: widget.isSubmitting,
+              isSavingDraft: widget.isSavingDraft,
+              isKeyboardVisible: isKeyboardVisible,
+              showSaveDraftAction: widget.showSaveDraftAction,
+              submitButtonLabel: widget.submitButtonLabel,
+              onSubmitPressed: _handleSubmitPressed,
+              onSaveDraftPressed: _handleSaveDraftPressed,
+            ),
+          ],
         ),
       ),
     );

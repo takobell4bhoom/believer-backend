@@ -1,7 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
+import '../models/prayer_timings.dart';
 import '../services/location_preferences_service.dart';
 import '../services/prayer_settings_service.dart';
+import '../services/user_prayer_timings_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_tokens.dart';
 import '../widgets/common/figma_section_heading.dart';
@@ -24,10 +28,16 @@ class PrayerNotificationsSettingsPage extends StatefulWidget {
     super.key,
     this.settingsService,
     this.locationPreferencesService,
+    this.userPrayerTimingsService,
+    this.now,
+    this.liveRefreshInterval = const Duration(minutes: 1),
   });
 
   final PrayerSettingsService? settingsService;
   final LocationPreferencesService? locationPreferencesService;
+  final UserPrayerTimingsService? userPrayerTimingsService;
+  final DateTime Function()? now;
+  final Duration liveRefreshInterval;
 
   @override
   State<PrayerNotificationsSettingsPage> createState() =>
@@ -36,13 +46,18 @@ class PrayerNotificationsSettingsPage extends StatefulWidget {
 
 class _PrayerNotificationsSettingsPageState
     extends State<PrayerNotificationsSettingsPage> {
-  static const _locationFallback = LocationPreferencesService.defaultLocation;
-
   late final PrayerSettingsService _settingsService;
   late final LocationPreferencesService _locationPreferencesService;
+  late final UserPrayerTimingsService _userPrayerTimingsService;
 
   PrayerSettings? _settings;
-  String _location = _locationFallback;
+  SavedUserLocation? _savedLocation;
+  PrayerTimings? _prayerTimings;
+  String? _timingsMessage;
+  bool _isPrayerTimingsLoading = true;
+  Timer? _refreshTimer;
+  DateTime _currentTime = DateTime.now();
+  int _timingsRequestVersion = 0;
 
   @override
   void initState() {
@@ -50,26 +65,50 @@ class _PrayerNotificationsSettingsPageState
     _settingsService = widget.settingsService ?? PrayerSettingsService();
     _locationPreferencesService =
         widget.locationPreferencesService ?? LocationPreferencesService();
-    _loadSettings();
-    _loadLocation();
+    _userPrayerTimingsService =
+        widget.userPrayerTimingsService ?? UserPrayerTimingsService();
+    _currentTime = _now();
+    _initializePage();
+    _refreshTimer = Timer.periodic(
+      widget.liveRefreshInterval,
+      (_) => _handleRefreshTick(),
+    );
   }
 
-  Future<void> _loadSettings() async {
-    final loaded = await _settingsService.load();
-    if (!mounted) return;
-    setState(() => _settings = loaded);
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
   }
 
-  Future<void> _loadLocation() async {
-    final loadedLocation =
-        await _locationPreferencesService.loadCurrentLocation();
+  DateTime _now() => widget.now?.call() ?? DateTime.now();
+
+  String get _locationLabel =>
+      _savedLocation?.label ?? LocationPreferencesService.defaultLocation;
+
+  String get _requestedDate => _formatIsoDate(_currentTime);
+
+  Future<void> _initializePage() async {
+    final loadedSettings = await _settingsService.load();
+    final savedLocation = await _locationPreferencesService.loadSavedLocation();
     if (!mounted) return;
-    setState(() => _location = loadedLocation);
+    setState(() {
+      _settings = loadedSettings;
+      _savedLocation = savedLocation;
+    });
+    await _refreshPrayerTimings(
+      settingsOverride: loadedSettings,
+      locationOverride: savedLocation,
+    );
   }
 
   Future<void> _updateSettings(PrayerSettings next) async {
+    final previousAsarMode = _settings?.asarTimeMode;
     setState(() => _settings = next);
     await _settingsService.save(next);
+    if (next.asarTimeMode != previousAsarMode) {
+      await _refreshPrayerTimings(settingsOverride: next);
+    }
   }
 
   void _showPlaceholder(String message) {
@@ -77,9 +116,86 @@ class _PrayerNotificationsSettingsPageState
         .showSnackBar(SnackBar(content: Text(message)));
   }
 
+  Future<void> _handleRefreshTick() async {
+    final nextNow = _now();
+    final nextLocation = await _locationPreferencesService.loadSavedLocation();
+    if (!mounted) return;
+
+    final locationChanged = !_sameLocation(_savedLocation, nextLocation);
+    final dateChanged = _formatIsoDate(_currentTime) != _formatIsoDate(nextNow);
+    setState(() {
+      _currentTime = nextNow;
+      _savedLocation = nextLocation;
+    });
+
+    if (locationChanged || dateChanged) {
+      await _refreshPrayerTimings(locationOverride: nextLocation);
+    }
+  }
+
+  Future<void> _refreshPrayerTimings({
+    PrayerSettings? settingsOverride,
+    SavedUserLocation? locationOverride,
+  }) async {
+    final settings = settingsOverride ?? _settings;
+    final location = locationOverride ?? _savedLocation;
+    final requestVersion = ++_timingsRequestVersion;
+
+    if (location == null || !location.hasCoordinates) {
+      if (!mounted || requestVersion != _timingsRequestVersion) return;
+      setState(() {
+        _prayerTimings = null;
+        _timingsMessage = null;
+        _isPrayerTimingsLoading = false;
+      });
+      return;
+    }
+
+    if (settings == null) {
+      return;
+    }
+
+    setState(() {
+      _isPrayerTimingsLoading = true;
+      _timingsMessage = null;
+    });
+
+    try {
+      final timings = await _userPrayerTimingsService.getDailyTimings(
+        date: _requestedDate,
+        latitude: location.latitude!,
+        longitude: location.longitude!,
+        school:
+            settings.asarTimeMode == AsarTimeMode.late ? 'hanafi' : 'standard',
+      );
+      if (!mounted || requestVersion != _timingsRequestVersion) return;
+      setState(() {
+        _prayerTimings = timings;
+        _timingsMessage =
+            timings.isAvailable ? null : timings.unavailableReason;
+        _isPrayerTimingsLoading = false;
+      });
+    } catch (_) {
+      if (!mounted || requestVersion != _timingsRequestVersion) return;
+      setState(() {
+        _prayerTimings = null;
+        _timingsMessage =
+            'Live prayer timings are temporarily unavailable. Please try again shortly.';
+        _isPrayerTimingsLoading = false;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final settings = _settings;
+    final overviewModel = _buildOverviewModel(
+      prayerTimings: _prayerTimings,
+      currentTime: _currentTime,
+      isLoading: _isPrayerTimingsLoading,
+      timingsMessage: _timingsMessage,
+      hasSavedCoordinates: _savedLocation?.hasCoordinates ?? false,
+    );
 
     return Scaffold(
       backgroundColor: const Color(0xFFF6F7F4),
@@ -88,7 +204,7 @@ class _PrayerNotificationsSettingsPageState
         child: Column(
           children: [
             _PrayerSettingsTopNav(
-              location: _location,
+              location: _locationLabel,
               onBackTap: () => Navigator.of(context).maybePop(),
               onMenuTap: () =>
                   _showPlaceholder('Main menu actions will be added soon.'),
@@ -108,6 +224,7 @@ class _PrayerNotificationsSettingsPageState
                               _PrayerOverviewCard(
                                 asarTimeMode: settings.asarTimeMode,
                                 prayerModes: settings.prayerModes,
+                                overview: overviewModel,
                                 onAsarModeChanged: (mode) => _updateSettings(
                                   settings.copyWith(asarTimeMode: mode),
                                 ),
@@ -164,6 +281,260 @@ class _PrayerNotificationsSettingsPageState
       ),
     );
   }
+}
+
+class _PrayerOverviewData {
+  const _PrayerOverviewData({
+    required this.dateLabel,
+    required this.currentPrayerLabel,
+    required this.currentPrayerRange,
+    required this.badgeLabel,
+    required this.methodLabel,
+    required this.activePrayerKey,
+    required this.rowTimes,
+  });
+
+  final String dateLabel;
+  final String currentPrayerLabel;
+  final String currentPrayerRange;
+  final String badgeLabel;
+  final String methodLabel;
+  final String? activePrayerKey;
+  final Map<String, String> rowTimes;
+}
+
+const Map<String, String> _prayerLabels = <String, String>{
+  'fajr': 'Fajar',
+  'dhuhr': 'Duhr',
+  'asr': 'Asar',
+  'maghrib': 'Maghrib',
+  'isha': 'Isha',
+};
+
+const List<String> _overviewPrayerOrder = <String>[
+  'fajr',
+  'dhuhr',
+  'asr',
+  'maghrib',
+  'isha',
+];
+
+_PrayerOverviewData _buildOverviewModel({
+  required PrayerTimings? prayerTimings,
+  required DateTime currentTime,
+  required bool isLoading,
+  required String? timingsMessage,
+  required bool hasSavedCoordinates,
+}) {
+  final rowTimes = <String, String>{
+    for (final prayer in _overviewPrayerOrder)
+      prayer: prayerTimings?.timeFor(prayer).trim().isNotEmpty == true
+          ? prayerTimings!.timeFor(prayer)
+          : '--',
+  };
+  final dateLabel = prayerTimings?.dateLabel.isNotEmpty == true
+      ? prayerTimings!.dateLabel
+      : _formatDisplayDate(prayerTimings?.date ?? _formatIsoDate(currentTime));
+
+  if (isLoading) {
+    return _PrayerOverviewData(
+      dateLabel: dateLabel,
+      currentPrayerLabel: 'Loading',
+      currentPrayerRange: 'Fetching today\'s prayer timings',
+      badgeLabel: 'Refreshing timings',
+      methodLabel: '',
+      activePrayerKey: null,
+      rowTimes: rowTimes,
+    );
+  }
+
+  if (!hasSavedCoordinates) {
+    return _PrayerOverviewData(
+      dateLabel: dateLabel,
+      currentPrayerLabel: 'Location Needed',
+      currentPrayerRange:
+          'Save your location coordinates to load today\'s timings',
+      badgeLabel: 'Settings stay active',
+      methodLabel: '',
+      activePrayerKey: null,
+      rowTimes: rowTimes,
+    );
+  }
+
+  if (prayerTimings == null || !prayerTimings.isAvailable) {
+    return _PrayerOverviewData(
+      dateLabel: dateLabel,
+      currentPrayerLabel: 'Unavailable',
+      currentPrayerRange: timingsMessage ??
+          prayerTimings?.unavailableReason ??
+          'Live prayer timings are temporarily unavailable',
+      badgeLabel: 'Try again soon',
+      methodLabel: '',
+      activePrayerKey: null,
+      rowTimes: rowTimes,
+    );
+  }
+
+  final currentWindow = prayerTimings.currentPrayerWindowAt(currentTime);
+  if (currentWindow != null) {
+    final prayerLabel = _prayerDisplayLabel(currentWindow.prayerKey);
+    final range = _buildPrayerRange(
+      prayerTimings,
+      currentWindow.prayerKey,
+      currentWindow.endTime != null
+          ? _nextPrayerKey(currentWindow.prayerKey)
+          : null,
+    );
+    final badgeLabel = currentWindow.endTime != null
+        ? 'Ends in ${_formatDuration(currentWindow.endTime!.difference(currentTime))}'
+        : 'Last listed prayer today';
+    return _PrayerOverviewData(
+      dateLabel: dateLabel,
+      currentPrayerLabel: prayerLabel,
+      currentPrayerRange: range,
+      badgeLabel: badgeLabel,
+      methodLabel: _buildMethodLabel(prayerTimings),
+      activePrayerKey: currentWindow.prayerKey,
+      rowTimes: rowTimes,
+    );
+  }
+
+  if (prayerTimings.nextPrayer.isNotEmpty &&
+      prayerTimings.nextPrayerTime.isNotEmpty) {
+    final nextPrayerKey = _prayerKeyForLabel(prayerTimings.nextPrayer);
+    final nextPrayerTime = prayerTimings.nextPrayerTime;
+    final nextDateTime = nextPrayerKey == null
+        ? null
+        : prayerTimings.timeForPrayerOnDate(nextPrayerKey);
+    return _PrayerOverviewData(
+      dateLabel: dateLabel,
+      currentPrayerLabel: _normalizePrayerLabel(prayerTimings.nextPrayer),
+      currentPrayerRange: '$nextPrayerTime starts next',
+      badgeLabel: nextDateTime == null
+          ? 'Starts soon'
+          : 'Starts in ${_formatDuration(nextDateTime.difference(currentTime))}',
+      methodLabel: _buildMethodLabel(prayerTimings),
+      activePrayerKey: null,
+      rowTimes: rowTimes,
+    );
+  }
+
+  return _PrayerOverviewData(
+    dateLabel: dateLabel,
+    currentPrayerLabel: 'Prayer Times',
+    currentPrayerRange: 'Final prayer listed below for today',
+    badgeLabel: 'Live timings loaded',
+    methodLabel: _buildMethodLabel(prayerTimings),
+    activePrayerKey: null,
+    rowTimes: rowTimes,
+  );
+}
+
+String _formatIsoDate(DateTime value) {
+  final month = value.month.toString().padLeft(2, '0');
+  final day = value.day.toString().padLeft(2, '0');
+  return '${value.year}-$month-$day';
+}
+
+String _formatDisplayDate(String isoDate) {
+  final parsed = DateTime.tryParse(isoDate);
+  if (parsed == null) {
+    return isoDate;
+  }
+
+  const weekdays = <String>['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const months = <String>[
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
+  return '${weekdays[parsed.weekday - 1]} ${parsed.day.toString().padLeft(2, '0')} ${months[parsed.month - 1]}';
+}
+
+String _buildMethodLabel(PrayerTimings? prayerTimings) {
+  final methodName = prayerTimings?.configuration?.calculationMethodName.trim();
+  if (methodName == null || methodName.isEmpty || prayerTimings?.isAvailable != true) {
+    return '';
+  }
+
+  return 'Method: $methodName';
+}
+
+String _prayerDisplayLabel(String prayer) => _prayerLabels[prayer] ?? prayer;
+
+String? _prayerKeyForLabel(String label) {
+  for (final prayer in _overviewPrayerOrder) {
+    if (_prayerDisplayLabel(prayer) == label ||
+        _prayerDisplayLabel(prayer) == _normalizePrayerLabel(label)) {
+      return prayer;
+    }
+  }
+  return null;
+}
+
+String _normalizePrayerLabel(String label) {
+  if (label == 'Dhuhr') {
+    return 'Duhr';
+  }
+  if (label == 'Fajr') {
+    return 'Fajar';
+  }
+  return label;
+}
+
+String? _nextPrayerKey(String prayer) {
+  final currentIndex = _overviewPrayerOrder.indexOf(prayer);
+  if (currentIndex < 0 || currentIndex >= _overviewPrayerOrder.length - 1) {
+    return null;
+  }
+  return _overviewPrayerOrder[currentIndex + 1];
+}
+
+String _buildPrayerRange(
+  PrayerTimings timings,
+  String prayerKey,
+  String? nextPrayerKey,
+) {
+  final start = timings.timeFor(prayerKey);
+  final end = nextPrayerKey == null ? '' : timings.timeFor(nextPrayerKey);
+  if (start.isEmpty) {
+    return '--';
+  }
+  if (end.isEmpty) {
+    return '$start onwards';
+  }
+  return '$start - $end';
+}
+
+String _formatDuration(Duration duration) {
+  if (duration.isNegative || duration == Duration.zero) {
+    return 'less than a minute';
+  }
+
+  final hours = duration.inHours;
+  final minutes = duration.inMinutes.remainder(60);
+  if (hours == 0) {
+    return '$minutes min${minutes == 1 ? '' : 's'}';
+  }
+  if (minutes == 0) {
+    return '$hours hr${hours == 1 ? '' : 's'}';
+  }
+  return '$hours hr${hours == 1 ? '' : 's'} $minutes min${minutes == 1 ? '' : 's'}';
+}
+
+bool _sameLocation(SavedUserLocation? left, SavedUserLocation? right) {
+  return left?.label == right?.label &&
+      left?.latitude == right?.latitude &&
+      left?.longitude == right?.longitude;
 }
 
 class _PrayerSettingsTopNav extends StatelessWidget {
@@ -267,12 +638,14 @@ class _PrayerSettingsTopNav extends StatelessWidget {
 
 class _PrayerOverviewCard extends StatelessWidget {
   const _PrayerOverviewCard({
+    required this.overview,
     required this.asarTimeMode,
     required this.prayerModes,
     required this.onAsarModeChanged,
     required this.onPrayerModeChanged,
   });
 
+  final _PrayerOverviewData overview;
   final AsarTimeMode asarTimeMode;
   final Map<String, PrayerNotificationMode> prayerModes;
   final ValueChanged<AsarTimeMode> onAsarModeChanged;
@@ -364,10 +737,10 @@ class _PrayerOverviewCard extends StatelessWidget {
                     ),
                   ),
                 ),
-                const Column(
+                Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Center(
+                    const Center(
                       child: Text(
                         'TODAY',
                         style: TextStyle(
@@ -378,35 +751,38 @@ class _PrayerOverviewCard extends StatelessWidget {
                         ),
                       ),
                     ),
-                    SizedBox(height: 4),
+                    const SizedBox(height: 4),
                     Row(
                       children: [
-                        Icon(
+                        const Icon(
                           Icons.chevron_left,
                           size: 20,
                           color: AppColors.primaryText,
                         ),
                         Expanded(
-                          child: Text(
-                            '10 Rajab 1446 AH | Fri 10 Jan',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontFamily: 'Figtree',
-                              fontSize: 12,
-                              fontWeight: FontWeight.w500,
-                              color: AppColors.primaryText,
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              overview.dateLabel,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                fontFamily: 'Figtree',
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                                color: AppColors.primaryText,
+                              ),
                             ),
                           ),
                         ),
-                        Icon(
+                        const Icon(
                           Icons.chevron_right,
                           size: 20,
                           color: AppColors.primaryText,
                         ),
                       ],
                     ),
-                    SizedBox(height: 10),
-                    Text(
+                    const SizedBox(height: 10),
+                    const Text(
                       'NOW',
                       style: TextStyle(
                         fontFamily: 'Figtree',
@@ -415,10 +791,10 @@ class _PrayerOverviewCard extends StatelessWidget {
                         color: AppColors.primaryText,
                       ),
                     ),
-                    SizedBox(height: 2),
+                    const SizedBox(height: 2),
                     Text(
-                      'Duhr',
-                      style: TextStyle(
+                      overview.currentPrayerLabel,
+                      style: const TextStyle(
                         fontFamily: 'Figtree',
                         fontSize: 28,
                         height: 1,
@@ -426,33 +802,37 @@ class _PrayerOverviewCard extends StatelessWidget {
                         color: AppColors.primaryText,
                       ),
                     ),
-                    SizedBox(height: 2),
+                    const SizedBox(height: 2),
                     Text(
-                      '01:05 PM - 04:10 PM',
-                      style: TextStyle(
+                      overview.currentPrayerRange,
+                      style: const TextStyle(
                         fontFamily: 'Figtree',
                         fontSize: 15,
                         fontWeight: FontWeight.w700,
                         color: AppColors.primaryText,
                       ),
                     ),
-                    SizedBox(height: 9),
-                    FigmaStatusChip(
-                      icon: Icons.alarm,
-                      label: 'Ends in 1 hr 50 mins',
-                      background: Color(0xFFF3F4F1),
-                      foreground: AppColors.primaryText,
-                      iconSize: 14,
-                      borderRadius: 6,
-                      padding: EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 5,
-                      ),
-                      textStyle: TextStyle(
-                        fontFamily: AppTypography.figtreeFamily,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.primaryText,
+                    const SizedBox(height: 9),
+                    FittedBox(
+                      alignment: Alignment.centerLeft,
+                      fit: BoxFit.scaleDown,
+                      child: FigmaStatusChip(
+                        icon: Icons.alarm,
+                        label: overview.badgeLabel,
+                        background: const Color(0xFFF3F4F1),
+                        foreground: AppColors.primaryText,
+                        iconSize: 14,
+                        borderRadius: 6,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 5,
+                        ),
+                        textStyle: const TextStyle(
+                          fontFamily: AppTypography.figtreeFamily,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.primaryText,
+                        ),
                       ),
                     ),
                   ],
@@ -466,16 +846,17 @@ class _PrayerOverviewCard extends StatelessWidget {
               children: [
                 _PrayerTimeRow(
                   prayer: 'Fajar',
-                  time: '06:30 AM',
+                  time: overview.rowTimes['fajr'] ?? '--',
                   notificationMode:
                       prayerModes['Fajar'] ?? PrayerNotificationMode.silent,
+                  isActive: overview.activePrayerKey == 'fajr',
                   onTap: () => _openPrayerTime(context, 'Fajar'),
                 ),
                 const SizedBox(height: 6),
                 _PrayerTimeRow(
                   prayer: 'Duhr',
-                  time: '12:30 PM',
-                  isActive: true,
+                  time: overview.rowTimes['dhuhr'] ?? '--',
+                  isActive: overview.activePrayerKey == 'dhuhr',
                   notificationMode:
                       prayerModes['Duhr'] ?? PrayerNotificationMode.silent,
                   onTap: () => _openPrayerTime(context, 'Duhr'),
@@ -483,7 +864,8 @@ class _PrayerOverviewCard extends StatelessWidget {
                 const SizedBox(height: 6),
                 _PrayerTimeRow(
                   prayer: 'Asar',
-                  time: '03:51 PM',
+                  time: overview.rowTimes['asr'] ?? '--',
+                  isActive: overview.activePrayerKey == 'asr',
                   notificationMode:
                       prayerModes['Asar'] ?? PrayerNotificationMode.silent,
                   onTap: () => _openPrayerTime(context, 'Asar'),
@@ -491,7 +873,8 @@ class _PrayerOverviewCard extends StatelessWidget {
                 const SizedBox(height: 6),
                 _PrayerTimeRow(
                   prayer: 'Maghrib',
-                  time: '06:21 PM',
+                  time: overview.rowTimes['maghrib'] ?? '--',
+                  isActive: overview.activePrayerKey == 'maghrib',
                   notificationMode:
                       prayerModes['Maghrib'] ?? PrayerNotificationMode.silent,
                   onTap: () => _openPrayerTime(context, 'Maghrib'),
@@ -499,7 +882,8 @@ class _PrayerOverviewCard extends StatelessWidget {
                 const SizedBox(height: 6),
                 _PrayerTimeRow(
                   prayer: 'Isha',
-                  time: '07:34 PM',
+                  time: overview.rowTimes['isha'] ?? '--',
+                  isActive: overview.activePrayerKey == 'isha',
                   notificationMode:
                       prayerModes['Isha'] ?? PrayerNotificationMode.silent,
                   onTap: () => _openPrayerTime(context, 'Isha'),
@@ -541,6 +925,20 @@ class _PrayerOverviewCard extends StatelessWidget {
                     ),
                   ),
                 ),
+                if (overview.methodLabel.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    overview.methodLabel,
+                    key: const Key('prayer-method-label'),
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontFamily: 'Figtree',
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                      color: AppColors.mutedText,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),

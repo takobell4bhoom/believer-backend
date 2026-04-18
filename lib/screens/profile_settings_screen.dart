@@ -302,11 +302,31 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
                                   key: const ValueKey(
                                     'profile-settings-super-admin-panel',
                                   ),
-                                  title: 'Admin Panel',
+                                  title: 'Open Admin Panel',
                                   subtitle:
-                                      'Open the unified moderation and customer account panel.',
+                                      'Primary super-admin workspace for moderation queues and customer management.',
                                   onTap: () => Navigator.of(context)
                                       .pushNamed(AppRoutes.superAdminPanel),
+                                ),
+                                _ActionRow(
+                                  key: const ValueKey(
+                                    'profile-settings-super-admin-mosques',
+                                  ),
+                                  title: 'Mosque Moderation',
+                                  subtitle:
+                                      'Useful direct shortcut when you want the mosque review queue immediately.',
+                                  onTap: () => Navigator.of(context)
+                                      .pushNamed(AppRoutes.mosqueModeration),
+                                ),
+                                _ActionRow(
+                                  key: const ValueKey(
+                                    'profile-settings-super-admin-businesses',
+                                  ),
+                                  title: 'Business Moderation',
+                                  subtitle:
+                                      'Useful direct shortcut when you want the business review queue immediately.',
+                                  onTap: () => Navigator.of(context)
+                                      .pushNamed(AppRoutes.businessModeration),
                                 ),
                               ],
                             ),

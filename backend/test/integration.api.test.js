@@ -463,6 +463,18 @@ function createEmailStub() {
   };
 }
 
+function assertAdminUserPayloadHasNoSecrets(user) {
+  assert.equal('passwordHash' in user, false);
+  assert.equal('password_hash' in user, false);
+  assert.equal('refreshToken' in user, false);
+  assert.equal('refresh_token' in user, false);
+  assert.equal('refreshTokens' in user, false);
+  assert.equal('resetTokenHash' in user, false);
+  assert.equal('reset_token_hash' in user, false);
+  assert.equal('tokenHash' in user, false);
+  assert.equal('token_hash' in user, false);
+}
+
 test.before(async () => {
   await runMigration015SuperAdminMosqueModeration();
   await resetData();
@@ -1674,10 +1686,21 @@ test('non-super-admin users are forbidden from super-admin user management endpo
   assert.equal(deactivateResponse.statusCode, 403);
   assert.equal(deactivateResponse.json().error.code, 'FORBIDDEN');
 
+  const detailResponse = await app.inject({
+    method: 'GET',
+    url: `/api/v1/admin/users/${communitySession.userId}`,
+    headers: {
+      authorization: `Bearer ${adminSession.accessToken}`
+    }
+  });
+
+  assert.equal(detailResponse.statusCode, 403);
+  assert.equal(detailResponse.json().error.code, 'FORBIDDEN');
+
   await app.close();
 });
 
-test('super admin can list users with search and pagination', async () => {
+test('super admin can list users with search, role filtering, and safe fields only', async () => {
   await resetData();
 
   const app = buildApp();
@@ -1690,7 +1713,7 @@ test('super admin can list users with search and pagination', async () => {
 
   const searchResponse = await app.inject({
     method: 'GET',
-    url: '/api/v1/admin/users?search=manager&page=1&limit=1',
+    url: '/api/v1/admin/users?search=manager&role=admin&page=1&limit=1',
     headers: {
       authorization: `Bearer ${superAdminSession.accessToken}`
     }
@@ -1700,6 +1723,8 @@ test('super admin can list users with search and pagination', async () => {
   assert.equal(searchResponse.json().data.items.length, 1);
   assert.equal(searchResponse.json().data.items[0].role, 'admin');
   assert.match(searchResponse.json().data.items[0].email, /manager-beta-/);
+  assert.ok(searchResponse.json().data.items[0].updatedAt);
+  assertAdminUserPayloadHasNoSecrets(searchResponse.json().data.items[0]);
   assert.equal(searchResponse.json().meta.pagination.page, 1);
   assert.equal(searchResponse.json().meta.pagination.limit, 1);
   assert.equal(searchResponse.json().meta.pagination.total, 1);
@@ -1708,7 +1733,51 @@ test('super admin can list users with search and pagination', async () => {
   await app.close();
 });
 
-test('super admin can deactivate and reactivate a user account safely', async () => {
+test('super admin can fetch one user summary with dependency counts and safe fields only', async () => {
+  await resetData();
+
+  const app = buildApp();
+  const targetSession = await signupAdminSession(
+    app,
+    `customer-summary-admin-${Date.now()}@example.com`
+  );
+  const superAdminSession = await signupSuperAdminSession(
+    app,
+    `customer-summary-super-admin-${Date.now()}@example.com`
+  );
+
+  await createMosqueAsAdmin(app, targetSession.accessToken, {
+    name: `Summary Owned Mosque ${Date.now()}`
+  });
+  await submitBusinessListingForReview(app, targetSession, {
+    basicDetails: {
+      businessName: `Summary Listing ${Date.now()}`
+    },
+    contactDetails: {
+      businessEmail: `summary-listing-${Date.now()}@example.com`
+    }
+  });
+
+  const detailResponse = await app.inject({
+    method: 'GET',
+    url: `/api/v1/admin/users/${targetSession.userId}`,
+    headers: {
+      authorization: `Bearer ${superAdminSession.accessToken}`
+    }
+  });
+
+  assert.equal(detailResponse.statusCode, 200);
+  assert.equal(detailResponse.json().data.user.id, targetSession.userId);
+  assert.equal(detailResponse.json().data.user.role, 'admin');
+  assert.equal(detailResponse.json().data.user.dependencySummary.mosqueCount, 1);
+  assert.equal(detailResponse.json().data.user.dependencySummary.businessListingCount, 1);
+  assert.ok(detailResponse.json().data.user.updatedAt);
+  assertAdminUserPayloadHasNoSecrets(detailResponse.json().data.user);
+
+  await app.close();
+});
+
+test('super admin can deactivate a user, revoke refresh tokens, and later reactivate them', async () => {
   await resetData();
 
   const app = buildApp();
@@ -1717,6 +1786,13 @@ test('super admin can deactivate and reactivate a user account safely', async ()
   const superAdminSession = await signupSuperAdminSession(
     app,
     `customer-toggle-super-admin-${Date.now()}@example.com`
+  );
+  const activeRefreshTokensBeforeDeactivation = await pool.query(
+    `SELECT count(*)::int AS active_count
+     FROM refresh_tokens
+     WHERE user_id = $1
+       AND revoked_at IS NULL`,
+    [targetSession.userId]
   );
 
   const deactivateResponse = await app.inject({
@@ -1729,6 +1805,21 @@ test('super admin can deactivate and reactivate a user account safely', async ()
 
   assert.equal(deactivateResponse.statusCode, 200);
   assert.equal(deactivateResponse.json().data.user.isActive, false);
+  assert.ok(deactivateResponse.json().data.user.updatedAt);
+  assertAdminUserPayloadHasNoSecrets(deactivateResponse.json().data.user);
+
+  const revokedTokens = await pool.query(
+    `SELECT count(*)::int AS revoked_count
+     FROM refresh_tokens
+     WHERE user_id = $1
+       AND revoked_at IS NOT NULL`,
+    [targetSession.userId]
+  );
+
+  assert.equal(
+    revokedTokens.rows[0].revoked_count,
+    activeRefreshTokensBeforeDeactivation.rows[0].active_count
+  );
 
   const disabledLoginResponse = await app.inject({
     method: 'POST',
@@ -1755,6 +1846,7 @@ test('super admin can deactivate and reactivate a user account safely', async ()
 
   assert.equal(reactivateResponse.statusCode, 200);
   assert.equal(reactivateResponse.json().data.user.isActive, true);
+  assertAdminUserPayloadHasNoSecrets(reactivateResponse.json().data.user);
 
   const enabledLoginResponse = await app.inject({
     method: 'POST',
@@ -1773,7 +1865,30 @@ test('super admin can deactivate and reactivate a user account safely', async ()
   await app.close();
 });
 
-test('super admin can trigger a safe password reset email for an active user', async () => {
+test('super admin cannot deactivate their own account through the admin endpoint', async () => {
+  await resetData();
+
+  const app = buildApp();
+  const superAdminSession = await signupSuperAdminSession(
+    app,
+    `customer-self-block-super-admin-${Date.now()}@example.com`
+  );
+
+  const selfDeactivateResponse = await app.inject({
+    method: 'POST',
+    url: `/api/v1/admin/users/${superAdminSession.userId}/deactivate`,
+    headers: {
+      authorization: `Bearer ${superAdminSession.accessToken}`
+    }
+  });
+
+  assert.equal(selfDeactivateResponse.statusCode, 409);
+  assert.equal(selfDeactivateResponse.json().error.code, 'VALIDATION_ERROR');
+
+  await app.close();
+});
+
+test('super admin can trigger a safe password reset flow for an active user', async () => {
   await resetData();
 
   const emailStub = createEmailStub();
@@ -1787,7 +1902,7 @@ test('super admin can trigger a safe password reset email for an active user', a
 
   const passwordResetResponse = await app.inject({
     method: 'POST',
-    url: `/api/v1/admin/users/${targetSession.userId}/password-reset`,
+    url: `/api/v1/admin/users/${targetSession.userId}/send-password-reset`,
     headers: {
       authorization: `Bearer ${superAdminSession.accessToken}`
     }

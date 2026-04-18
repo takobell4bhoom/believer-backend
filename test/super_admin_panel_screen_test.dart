@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:believer/data/auth_provider.dart';
+import 'package:believer/navigation/app_routes.dart';
 import 'package:believer/features/business_moderation/business_moderation_service.dart';
 import 'package:believer/features/mosque_moderation/mosque_moderation_service.dart';
 import 'package:believer/features/super_admin/super_admin_models.dart';
@@ -160,6 +161,7 @@ Future<void> _pumpScreen(
   WidgetTester tester, {
   required AuthNotifier Function() authFactory,
   required SuperAdminService service,
+  Map<String, WidgetBuilder> routes = const <String, WidgetBuilder>{},
 }) async {
   final container = ProviderContainer(
     overrides: [authProvider.overrideWith(authFactory)],
@@ -170,6 +172,7 @@ Future<void> _pumpScreen(
     UncontrolledProviderScope(
       container: container,
       child: MaterialApp(
+        routes: routes,
         home: SuperAdminPanelScreen(service: service),
       ),
     ),
@@ -196,6 +199,55 @@ void main() {
     expect(find.text('Customers'), findsNothing);
   });
 
+  testWidgets('summary cards render correctly and moderation shortcuts work',
+      (tester) async {
+    await _pumpScreen(
+      tester,
+      authFactory: _SuperAdminAuthNotifier.new,
+      service: _FakeSuperAdminService(
+        mosques: <MosqueModerationItem>[_mosqueItem()],
+        businesses: <BusinessModerationListing>[_businessItem()],
+        customers: _customerItems(),
+      ),
+      routes: {
+        AppRoutes.mosqueModeration: (_) =>
+            const Scaffold(body: Text('Mosque moderation stub')),
+        AppRoutes.businessModeration: (_) =>
+            const Scaffold(body: Text('Business moderation stub')),
+      },
+    );
+
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('super-admin-summary-mosques')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('super-admin-summary-businesses')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('super-admin-summary-customers')),
+      findsOneWidget,
+    );
+    expect(find.text('Pending mosques'), findsOneWidget);
+    expect(find.text('Pending business listings'), findsOneWidget);
+    expect(find.text('Customers'), findsOneWidget);
+    expect(find.text('2'), findsWidgets);
+
+    await tester.tap(find.text('Review').first);
+    await tester.pumpAndSettle();
+    expect(find.text('Mosque moderation stub'), findsOneWidget);
+
+    Navigator.of(tester.element(find.text('Mosque moderation stub'))).pop();
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Open Queue').first);
+    await tester.pumpAndSettle();
+    expect(find.text('Business moderation stub'), findsOneWidget);
+  });
+
   testWidgets('admin panel stays usable on narrow mobile widths',
       (tester) async {
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -214,16 +266,19 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Admin Panel'), findsOneWidget);
-    expect(find.text('Mosques'), findsOneWidget);
-    expect(find.text('Businesses'), findsOneWidget);
-    expect(find.text('Customers'), findsOneWidget);
-    expect(find.text('Unity Mosque'), findsOneWidget);
-    expect(find.text('Noor Catering'), findsOneWidget);
+    expect(find.text('Pending mosques'), findsOneWidget);
+    expect(find.text('Pending business listings'), findsOneWidget);
+    expect(find.text('Customer Management'), findsOneWidget);
+    expect(find.text('Unity Mosque'), findsWidgets);
+    expect(find.text('Noor Catering'), findsWidgets);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('customer actions render safely for active and inactive users',
+  testWidgets('customer actions render safely without mobile overflow',
       (tester) async {
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.binding.setSurfaceSize(const Size(320, 800));
+
     await _pumpScreen(
       tester,
       authFactory: _SuperAdminAuthNotifier.new,
@@ -251,5 +306,6 @@ void main() {
       find.byKey(const ValueKey('super-admin-panel-password-reset-customer-2')),
       findsOneWidget,
     );
+    expect(tester.takeException(), isNull);
   });
 }

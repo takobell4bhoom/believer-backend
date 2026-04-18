@@ -241,92 +241,121 @@ class _BusinessRegistrationBasicScreenState
   Widget build(BuildContext context) {
     final backgroundColor =
         Color.lerp(AppColors.background, AppColors.surface, 0.56)!;
+    final double keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
+    final bool isKeyboardVisible = keyboardInset > 0;
+    final bool showSaveDraft = widget.showSaveDraftAction && _draft.isDirty;
+    final double footerReservedSpace =
+        switch ((showSaveDraft, isKeyboardVisible)) {
+      (_, true) => 88,
+      (true, false) => 146,
+      (false, false) => 112,
+    };
 
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       backgroundColor: backgroundColor,
       body: SafeArea(
         bottom: false,
-        child: Column(
-          children: [
-            BusinessRegistrationBasicHeader(onBack: _handleBack),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const BusinessRegistrationSectionLabel(
-                      text: 'Business Name',
-                      required: true,
+        child: Align(
+          alignment: Alignment.topCenter,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 430),
+            child: AnimatedPadding(
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeOut,
+              padding: EdgeInsets.only(bottom: keyboardInset),
+              child: Column(
+                children: [
+                  BusinessRegistrationBasicHeader(onBack: _handleBack),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      keyboardDismissBehavior:
+                          ScrollViewKeyboardDismissBehavior.onDrag,
+                      padding: EdgeInsets.fromLTRB(
+                        20,
+                        14,
+                        20,
+                        footerReservedSpace + 20,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const BusinessRegistrationSectionLabel(
+                            text: 'Business Name',
+                            required: true,
+                          ),
+                          const SizedBox(height: 8),
+                          BusinessRegistrationTextField(
+                            controller: _businessNameController,
+                            textInputAction: TextInputAction.next,
+                          ),
+                          const SizedBox(height: 14),
+                          const BusinessRegistrationSectionLabel(
+                            text: 'Logo',
+                            required: true,
+                          ),
+                          const SizedBox(height: 8),
+                          BusinessRegistrationLogoUploadCard(
+                            logo: _logo,
+                            isLoading: _isPickingLogo,
+                            onTap: _handleLogoTap,
+                            onRemove: _handleRemoveLogo,
+                          ),
+                          const SizedBox(height: 14),
+                          const BusinessRegistrationSectionLabel(
+                            text: 'Business/Service Type',
+                            required: true,
+                          ),
+                          const SizedBox(height: 8),
+                          BusinessRegistrationTaxonomySelector(
+                            groups: businessRegistrationBasicTaxonomy,
+                            isExpanded: _showSelector,
+                            expandedGroupId: _expandedGroupId,
+                            selectedType: _selectedType,
+                            onToggleExpanded: _toggleSelector,
+                            onToggleGroup: _toggleGroup,
+                            onSelectItem: _selectType,
+                          ),
+                          const SizedBox(height: 14),
+                          const BusinessRegistrationSectionLabel(
+                            text: 'Tagline',
+                            required: true,
+                          ),
+                          const SizedBox(height: 8),
+                          BusinessRegistrationTextField(
+                            controller: _taglineController,
+                            minLines: 4,
+                            maxLines: 4,
+                            textInputAction: TextInputAction.newline,
+                          ),
+                          const SizedBox(height: 14),
+                          const BusinessRegistrationSectionLabel(
+                            text: 'Describe your business in a few words',
+                            required: true,
+                          ),
+                          const SizedBox(height: 8),
+                          BusinessRegistrationTextField(
+                            controller: _descriptionController,
+                            minLines: 10,
+                            maxLines: 10,
+                            textInputAction: TextInputAction.newline,
+                          ),
+                        ],
+                      ),
                     ),
-                    const SizedBox(height: 10),
-                    BusinessRegistrationTextField(
-                      controller: _businessNameController,
-                      textInputAction: TextInputAction.next,
-                    ),
-                    const SizedBox(height: 18),
-                    const BusinessRegistrationSectionLabel(
-                      text: 'Logo',
-                      required: true,
-                    ),
-                    const SizedBox(height: 10),
-                    BusinessRegistrationLogoUploadCard(
-                      logo: _logo,
-                      isLoading: _isPickingLogo,
-                      onTap: _handleLogoTap,
-                      onRemove: _handleRemoveLogo,
-                    ),
-                    const SizedBox(height: 18),
-                    const BusinessRegistrationSectionLabel(
-                      text: 'Business/Service Type',
-                      required: true,
-                    ),
-                    const SizedBox(height: 10),
-                    BusinessRegistrationTaxonomySelector(
-                      groups: businessRegistrationBasicTaxonomy,
-                      isExpanded: _showSelector,
-                      expandedGroupId: _expandedGroupId,
-                      selectedType: _selectedType,
-                      onToggleExpanded: _toggleSelector,
-                      onToggleGroup: _toggleGroup,
-                      onSelectItem: _selectType,
-                    ),
-                    const SizedBox(height: 18),
-                    const BusinessRegistrationSectionLabel(
-                      text: 'Tagline',
-                      required: true,
-                    ),
-                    const SizedBox(height: 10),
-                    BusinessRegistrationTextField(
-                      controller: _taglineController,
-                      minLines: 4,
-                      maxLines: 4,
-                      textInputAction: TextInputAction.newline,
-                    ),
-                    const SizedBox(height: 18),
-                    const BusinessRegistrationSectionLabel(
-                      text: 'Describe your business in a few words',
-                      required: true,
-                    ),
-                    const SizedBox(height: 10),
-                    BusinessRegistrationTextField(
-                      controller: _descriptionController,
-                      minLines: 10,
-                      maxLines: 10,
-                      textInputAction: TextInputAction.newline,
-                    ),
-                  ],
-                ),
+                  ),
+                  BusinessRegistrationFooter(
+                    canContinue: _canContinue,
+                    showSaveDraft: showSaveDraft,
+                    isKeyboardVisible: isKeyboardVisible,
+                    nextButtonLabel: widget.nextButtonLabel,
+                    onNext: _handleNext,
+                    onSaveDraftAndClose: _handleSaveDraftAndClose,
+                  ),
+                ],
               ),
             ),
-            BusinessRegistrationFooter(
-              canContinue: _canContinue,
-              showSaveDraft: widget.showSaveDraftAction && _draft.isDirty,
-              nextButtonLabel: widget.nextButtonLabel,
-              onNext: _handleNext,
-              onSaveDraftAndClose: _handleSaveDraftAndClose,
-            ),
-          ],
+          ),
         ),
       ),
     );

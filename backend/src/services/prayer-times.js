@@ -57,6 +57,20 @@ function formatAlAdhanDate(date) {
   return `${day}-${month}-${year}`;
 }
 
+function formatShortGregorianDate(dateString) {
+  const parsed = parseIsoDate(dateString);
+  if (!parsed) {
+    return dateString;
+  }
+
+  return new Intl.DateTimeFormat('en-GB', {
+    weekday: 'short',
+    day: '2-digit',
+    month: 'short',
+    timeZone: 'UTC'
+  }).format(parsed);
+}
+
 function parseIsoDate(dateString) {
   const [year, month, day] = dateString.split('-').map(Number);
   const parsed = new Date(Date.UTC(year, month - 1, day));
@@ -231,6 +245,31 @@ function toPrayerLabel(prayer) {
   }
 }
 
+function buildDateLabel(payloadDate, fallbackDate) {
+  const hijriDay = payloadDate?.hijri?.day;
+  const hijriMonth = payloadDate?.hijri?.month?.en;
+  const hijriYear = payloadDate?.hijri?.year;
+  const hijriDesignation = payloadDate?.hijri?.designation?.abbreviated ?? 'AH';
+  const hijriLabel =
+    hijriDay && hijriMonth && hijriYear
+      ? `${hijriDay} ${hijriMonth} ${hijriYear} ${hijriDesignation}`.trim()
+      : '';
+
+  const gregorianWeekday = payloadDate?.gregorian?.weekday?.en;
+  const gregorianDay = payloadDate?.gregorian?.day;
+  const gregorianMonth = payloadDate?.gregorian?.month?.en;
+  const gregorianLabel =
+    gregorianWeekday && gregorianDay && gregorianMonth
+      ? `${gregorianWeekday.slice(0, 3)} ${String(gregorianDay).padStart(2, '0')} ${gregorianMonth.slice(0, 3)}`
+      : formatShortGregorianDate(fallbackDate);
+
+  if (hijriLabel && gregorianLabel) {
+    return `${hijriLabel} | ${gregorianLabel}`;
+  }
+
+  return gregorianLabel || fallbackDate;
+}
+
 function buildTimingsReadModel(timings) {
   if (!timings) {
     return null;
@@ -241,16 +280,63 @@ function buildTimingsReadModel(timings) {
   );
 }
 
+function withOptionalMosqueId(payload, mosqueId) {
+  if (typeof mosqueId === 'string' && mosqueId.length > 0) {
+    return {
+      mosqueId,
+      ...payload
+    };
+  }
+
+  return payload;
+}
+
+function buildLocationConfiguration({
+  latitude,
+  longitude,
+  calculationMethodId,
+  calculationMethodName,
+  school,
+  adjustments
+}) {
+  const normalizedSchool = school === 'hanafi' ? 'hanafi' : 'standard';
+  const normalizedAdjustments = normalizePrayerAdjustments(adjustments);
+  const hasCalculationMethodId = Number.isInteger(calculationMethodId);
+  const resolvedCalculationMethodId = hasCalculationMethodId ? calculationMethodId : 0;
+  const resolvedCalculationMethodName =
+    calculationMethodName ??
+    (hasCalculationMethodId
+      ? CALCULATION_METHOD_LABELS[calculationMethodId] ??
+        `Calculation Method ${calculationMethodId}`
+      : 'Calculation Method');
+
+  return {
+    enabled: true,
+    latitude,
+    longitude,
+    calculationMethod: {
+      id: resolvedCalculationMethodId,
+      name: resolvedCalculationMethodName
+    },
+    school: {
+      value: normalizedSchool,
+      label: schoolLabel(normalizedSchool)
+    },
+    adjustments: normalizedAdjustments
+  };
+}
+
 function buildUnavailablePayload({
   mosqueId,
   date,
   configuration,
   status,
-  unavailableReason
+  unavailableReason,
+  dateLabel
 }) {
-  return {
-    mosqueId,
+  return withOptionalMosqueId({
     date,
+    dateLabel: dateLabel ?? formatShortGregorianDate(date),
     status,
     isConfigured: configuration != null,
     isAvailable: false,
@@ -262,12 +348,13 @@ function buildUnavailablePayload({
     nextPrayer: '',
     nextPrayerTime: '',
     cachedAt: null
-  };
+  }, mosqueId);
 }
 
 function buildPrayerTimesPayload({
   mosqueId,
   date,
+  dateLabel,
   configuration,
   timezone,
   timings,
@@ -281,9 +368,9 @@ function buildPrayerTimesPayload({
     now
   });
 
-  return {
-    mosqueId,
+  return withOptionalMosqueId({
     date,
+    dateLabel: dateLabel ?? formatShortGregorianDate(date),
     status: 'ready',
     isConfigured: true,
     isAvailable: true,
@@ -295,7 +382,7 @@ function buildPrayerTimesPayload({
     nextPrayer: nextPrayer.nextPrayer,
     nextPrayerTime: nextPrayer.nextPrayerTime,
     cachedAt
-  };
+  }, mosqueId);
 }
 
 function toTuneParameter(adjustments) {
@@ -339,7 +426,9 @@ export function createAlAdhanClient({
         const url = new URL(`${baseUrl.replace(/\/$/, '')}/timings/${formatAlAdhanDate(parsedDate)}`);
         url.searchParams.set('latitude', String(latitude));
         url.searchParams.set('longitude', String(longitude));
-        url.searchParams.set('method', String(calculationMethodId));
+        if (Number.isInteger(calculationMethodId)) {
+          url.searchParams.set('method', String(calculationMethodId));
+        }
         url.searchParams.set('school', school === 'hanafi' ? '1' : '0');
         url.searchParams.set('tune', toTuneParameter(adjustments));
 
@@ -376,14 +465,24 @@ export function createAlAdhanClient({
         );
 
         const timezone = payload?.data?.meta?.timezone || 'UTC';
+        const upstreamMethodId = Number(payload?.data?.meta?.method?.id);
+        const hasResolvedCalculationMethodId =
+          Number.isInteger(upstreamMethodId) || Number.isInteger(calculationMethodId);
+        const resolvedCalculationMethodId = Number.isInteger(upstreamMethodId)
+          ? upstreamMethodId
+          : (Number.isInteger(calculationMethodId) ? calculationMethodId : 0);
         const methodName =
           payload?.data?.meta?.method?.name ||
-          CALCULATION_METHOD_LABELS[calculationMethodId] ||
-          `Calculation Method ${calculationMethodId}`;
+          (hasResolvedCalculationMethodId
+            ? CALCULATION_METHOD_LABELS[resolvedCalculationMethodId] ??
+              `Calculation Method ${resolvedCalculationMethodId}`
+            : 'Calculation Method');
 
         return {
           timezone,
+          calculationMethodId: resolvedCalculationMethodId,
           calculationMethodName: methodName,
+          dateLabel: buildDateLabel(payload?.data?.date, date),
           timings: normalizedTimings
         };
       } finally {
@@ -437,6 +536,48 @@ export function createPrayerTimeService({
   alAdhanClient = createAlAdhanClient(),
   now = () => new Date()
 } = {}) {
+  async function fetchLocationTimingsPayload({
+    date,
+    latitude,
+    longitude,
+    calculationMethodId,
+    school = 'standard',
+    adjustments = DEFAULT_PRAYER_ADJUSTMENTS,
+    mosqueId = null,
+    source = 'aladhan'
+  }) {
+    const normalizedSchool = school === 'hanafi' ? 'hanafi' : 'standard';
+    const normalizedAdjustments = normalizePrayerAdjustments(adjustments);
+    const fetched = await alAdhanClient.getDailyTimings({
+      date,
+      latitude,
+      longitude,
+      calculationMethodId,
+      school: normalizedSchool,
+      adjustments: normalizedAdjustments
+    });
+    const currentTime = now();
+
+    return buildPrayerTimesPayload({
+      mosqueId,
+      date,
+      dateLabel: fetched.dateLabel,
+      configuration: buildLocationConfiguration({
+        latitude,
+        longitude,
+        calculationMethodId: fetched.calculationMethodId,
+        calculationMethodName: fetched.calculationMethodName,
+        school: normalizedSchool,
+        adjustments: normalizedAdjustments
+      }),
+      timezone: fetched.timezone,
+      timings: fetched.timings,
+      source,
+      cachedAt: currentTime.toISOString(),
+      now: currentTime
+    });
+  }
+
   return {
     async readDailyTimings({ mosqueId, date }) {
       const result = await db.query(
@@ -502,31 +643,15 @@ export function createPrayerTimeService({
       }
 
       try {
-        const fetched = await alAdhanClient.getDailyTimings({
+        const payload = await fetchLocationTimingsPayload({
+          mosqueId,
           date,
           latitude: configuration.latitude,
           longitude: configuration.longitude,
           calculationMethodId: configuration.calculationMethod.id,
           school: configuration.school.value,
-          adjustments: configuration.adjustments
-        });
-
-        const currentTime = now();
-        const payload = buildPrayerTimesPayload({
-          mosqueId,
-          date,
-          configuration: {
-            ...configuration,
-            calculationMethod: {
-              id: configuration.calculationMethod.id,
-              name: fetched.calculationMethodName
-            }
-          },
-          timezone: fetched.timezone,
-          timings: fetched.timings,
+          adjustments: configuration.adjustments,
           source: 'aladhan',
-          cachedAt: currentTime.toISOString(),
-          now: currentTime
         });
 
         await db.query(
@@ -542,8 +667,12 @@ export function createPrayerTimeService({
           [mosqueId, date, JSON.stringify(payload), payload.cachedAt]
         );
 
-        if (shouldSyncSummaryTimings({ date, timeZone: fetched.timezone, now: currentTime })) {
-          await syncMosqueSummaryTimings(db, mosqueId, fetched.timings);
+        const currentTime = now();
+        if (shouldSyncSummaryTimings({ date, timeZone: payload.timezone, now: currentTime })) {
+          await syncMosqueSummaryTimings(db, mosqueId, {
+            dhuhr: { display: payload.timings.dhuhr },
+            asr: { display: payload.timings.asr }
+          });
         }
 
         return payload;
@@ -552,6 +681,45 @@ export function createPrayerTimeService({
           mosqueId,
           date,
           configuration,
+          status: 'temporarily_unavailable',
+          unavailableReason: 'Live prayer timings are temporarily unavailable. Please try again shortly.'
+        });
+      }
+    },
+
+    async readLocationDailyTimings({
+      date,
+      latitude,
+      longitude,
+      calculationMethodId,
+      school = 'standard',
+      adjustments = DEFAULT_PRAYER_ADJUSTMENTS
+    }) {
+      const normalizedSchool = school === 'hanafi' ? 'hanafi' : 'standard';
+      const normalizedAdjustments = normalizePrayerAdjustments(adjustments);
+
+      try {
+        return await fetchLocationTimingsPayload({
+          date,
+          latitude,
+          longitude,
+          calculationMethodId,
+          school: normalizedSchool,
+          adjustments: normalizedAdjustments,
+          mosqueId: null,
+          source: 'aladhan'
+        });
+      } catch {
+        return buildUnavailablePayload({
+          mosqueId: null,
+          date,
+          configuration: buildLocationConfiguration({
+            latitude,
+            longitude,
+            calculationMethodId,
+            school: normalizedSchool,
+            adjustments: normalizedAdjustments
+          }),
           status: 'temporarily_unavailable',
           unavailableReason: 'Live prayer timings are temporarily unavailable. Please try again shortly.'
         });

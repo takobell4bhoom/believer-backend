@@ -232,6 +232,10 @@ void main() {
           routes: {
             AppRoutes.superAdminPanel: (_) =>
                 const Scaffold(body: Text('Admin panel stub')),
+            AppRoutes.mosqueModeration: (_) =>
+                const Scaffold(body: Text('Mosque moderation stub')),
+            AppRoutes.businessModeration: (_) =>
+                const Scaffold(body: Text('Business moderation stub')),
           },
           home: ProfileSettingsScreen(authService: service),
         ),
@@ -244,13 +248,29 @@ void main() {
       find.byKey(const ValueKey('profile-settings-super-admin-section')),
       findsOneWidget,
     );
-    expect(find.text('Admin Panel'), findsOneWidget);
+    expect(find.text('Open Admin Panel'), findsOneWidget);
+    expect(find.text('Mosque Moderation'), findsOneWidget);
+    expect(find.text('Business Moderation'), findsOneWidget);
 
-    await tester.ensureVisible(find.text('Admin Panel'));
-    await tester.tap(find.text('Admin Panel'));
+    await tester.ensureVisible(find.text('Open Admin Panel'));
+    await tester.tap(find.text('Open Admin Panel'));
     await tester.pumpAndSettle();
 
     expect(find.text('Admin panel stub'), findsOneWidget);
+
+    Navigator.of(tester.element(find.text('Admin panel stub'))).pop();
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Mosque Moderation'));
+    await tester.pumpAndSettle();
+    expect(find.text('Mosque moderation stub'), findsOneWidget);
+
+    Navigator.of(tester.element(find.text('Mosque moderation stub'))).pop();
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Business Moderation'));
+    await tester.pumpAndSettle();
+    expect(find.text('Business moderation stub'), findsOneWidget);
   });
 
   testWidgets('settings info rows navigate to real routes', (tester) async {

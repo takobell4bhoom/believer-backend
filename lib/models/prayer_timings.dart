@@ -89,6 +89,7 @@ class PrayerTimings {
   const PrayerTimings({
     required this.mosqueId,
     required this.date,
+    this.dateLabel = '',
     required this.status,
     required this.isConfigured,
     required this.isAvailable,
@@ -104,6 +105,7 @@ class PrayerTimings {
 
   final String mosqueId;
   final String date;
+  final String dateLabel;
   final String status;
   final bool isConfigured;
   final bool isAvailable;
@@ -123,6 +125,7 @@ class PrayerTimings {
     return PrayerTimings(
       mosqueId: json['mosqueId'] as String? ?? '',
       date: json['date'] as String? ?? '',
+      dateLabel: json['dateLabel'] as String? ?? '',
       status: json['status'] as String? ?? 'not_configured',
       isConfigured: json['isConfigured'] as bool? ?? false,
       isAvailable: json['isAvailable'] as bool? ?? false,
@@ -148,6 +151,7 @@ class PrayerTimings {
     return <String, dynamic>{
       'mosqueId': mosqueId,
       'date': date,
+      'dateLabel': dateLabel,
       'status': status,
       'isConfigured': isConfigured,
       'isAvailable': isAvailable,
@@ -246,7 +250,8 @@ class PrayerTimings {
       }
     }
 
-    if (entries.isEmpty || resolvedReferenceTime.isBefore(entries.first.start)) {
+    if (entries.isEmpty ||
+        resolvedReferenceTime.isBefore(entries.first.start)) {
       return null;
     }
 
@@ -264,9 +269,7 @@ class PrayerTimings {
 
       final progress = next == null
           ? 1.0
-          : ((resolvedReferenceTime
-                          .difference(current.start)
-                          .inMilliseconds /
+          : ((resolvedReferenceTime.difference(current.start).inMilliseconds /
                       next.start.difference(current.start).inMilliseconds)
                   .clamp(0.0, 1.0))
               .toDouble();

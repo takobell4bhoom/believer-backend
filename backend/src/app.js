@@ -19,6 +19,7 @@ import { notificationRoutes } from './routes/notifications.js';
 import { businessListingsRoutes } from './routes/business-listings.js';
 import { servicesRoutes } from './routes/services.js';
 import { superAdminRoutes } from './routes/super-admin.js';
+import { prayerTimesRoutes } from './routes/prayer-times.js';
 import { createPrayerTimeService } from './services/prayer-times.js';
 import {
   fetchServices,
@@ -93,6 +94,7 @@ export function buildApp(options = {}) {
     await businessListingsRoutes(api);
     await superAdminRoutes(api);
     await servicesRoutes(api);
+    await prayerTimesRoutes(api);
   });
 
   app.setErrorHandler((error, _request, reply) => {
