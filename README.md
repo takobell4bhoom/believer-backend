@@ -43,8 +43,10 @@ BelieversLens monorepo with a Flutter frontend at the repo root and a Fastify/Po
 ## CI
 - Frontend GitHub Actions workflow: `.github/workflows/frontend-ci.yml`
 - Backend GitHub Actions workflow: `.github/workflows/backend-ci.yml`
+- Production deploy workflow: `.github/workflows/production-deploy.yml`
 - Frontend CI runs `flutter pub get`, `flutter analyze`, `flutter test`, and a release web build with `API_BASE_URL`.
 - Backend CI keeps running syntax checks, smoke tests, and integration tests.
+- Production deploy runs the frontend and backend checks again on `main`, packages the Flutter web build as a GitHub artifact, uploads it to the Ubuntu host over SSH, and then runs `deploy/scripts/deploy_release.sh` on the server.
 
 ## Backend Integration Tests
 - Normal local development uses PostgreSQL at `postgresql://postgres:postgres@localhost:5432/believer`.
@@ -62,6 +64,7 @@ BelieversLens monorepo with a Flutter frontend at the repo root and a Fastify/Po
 
 ## Deployment
 - Azure Ubuntu VM deployment notes: `docs/deployment/AZURE_UBUNTU_VM.md`
+- GitHub Actions CI/CD setup: `docs/deployment/GITHUB_ACTIONS_CICD.md`
 - Public launch runbook: `docs/deployment/PUBLIC_LAUNCH_RUNBOOK.md`
 - Backup and restore guide: `docs/deployment/BACKUP_RESTORE.md`
 - Public QA checklist: `docs/deployment/PUBLIC_QA_CHECKLIST.md`
