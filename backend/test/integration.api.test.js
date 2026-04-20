@@ -125,10 +125,10 @@ async function seedMosque({ createdByUserId = null } = {}) {
   const result = await pool.query(
     `INSERT INTO mosques (
       name, address_line, city, state, country, postal_code,
-      latitude, longitude, facilities, is_verified, created_by_user_id
+      latitude, longitude, facilities, is_verified, moderation_status, created_by_user_id
     ) VALUES (
       $1, $2, $3, $4, $5, $6,
-      $7, $8, $9::jsonb, $10, $11
+      $7, $8, $9::jsonb, $10, $11, $12
     )
     RETURNING id`,
     [
@@ -142,6 +142,7 @@ async function seedMosque({ createdByUserId = null } = {}) {
       77.5946,
       JSON.stringify(['parking', 'wudu']),
       true,
+      'live',
       createdByUserId
     ]
   );
@@ -1651,6 +1652,69 @@ test('approved mosque becomes visible in public mosque list, detail, and nearby 
   await app.close();
 });
 
+test('public mosque discovery honors live moderation status even if legacy verification flag is stale', async () => {
+  await resetData();
+
+  const app = buildApp();
+  const adminSession = await signupAdminSession(
+    app,
+    `mosque-live-status-admin-${Date.now()}@example.com`
+  );
+  const createdMosque = await createMosqueAsAdmin(app, adminSession.accessToken, {
+    name: 'Live Status Nearby Mosque'
+  });
+  const superAdminSession = await signupSuperAdminSession(
+    app,
+    `mosque-live-status-super-admin-${Date.now()}@example.com`
+  );
+
+  const approveResponse = await app.inject({
+    method: 'POST',
+    url: `/api/v1/admin/mosques/${createdMosque.id}/approve`,
+    headers: {
+      authorization: `Bearer ${superAdminSession.accessToken}`
+    }
+  });
+
+  assert.equal(approveResponse.statusCode, 200);
+
+  await pool.query(
+    `UPDATE mosques
+     SET is_verified = FALSE,
+         moderation_status = 'live'
+     WHERE id = $1`,
+    [createdMosque.id]
+  );
+
+  const listResponse = await app.inject({
+    method: 'GET',
+    url: '/api/v1/mosques?city=Bengaluru&search=Live%20Status%20Nearby&sort=recent'
+  });
+
+  assert.equal(listResponse.statusCode, 200);
+  assert.equal(listResponse.json().data.items.length, 1);
+  assert.equal(listResponse.json().data.items[0].id, createdMosque.id);
+
+  const nearbyResponse = await app.inject({
+    method: 'GET',
+    url: '/api/v1/mosques/nearby?latitude=12.9716&longitude=77.5946&radius=5&limit=20'
+  });
+
+  assert.equal(nearbyResponse.statusCode, 200);
+  assert.equal(nearbyResponse.json().data.items.length, 1);
+  assert.equal(nearbyResponse.json().data.items[0].id, createdMosque.id);
+
+  const detailResponse = await app.inject({
+    method: 'GET',
+    url: `/api/v1/mosques/${createdMosque.id}`
+  });
+
+  assert.equal(detailResponse.statusCode, 200);
+  assert.equal(detailResponse.json().data.id, createdMosque.id);
+
+  await app.close();
+});
+
 test('non-super-admin users are forbidden from super-admin user management endpoints', async () => {
   await resetData();
 
@@ -1987,6 +2051,52 @@ test('unapproved mosque stays hidden from public APIs but visible to its owner a
   assert.equal(ownerDetailResponse.json().data.id, createdMosque.id);
   assert.equal(ownerDetailResponse.json().data.isVerified, false);
   assert.equal(ownerDetailResponse.json().data.canEdit, true);
+
+  await app.close();
+});
+
+test('public mosque discovery keeps pending mosques hidden even if the legacy verification flag is stale', async () => {
+  await resetData();
+
+  const app = buildApp();
+  const adminSession = await signupAdminSession(
+    app,
+    `mosque-pending-status-admin-${Date.now()}@example.com`
+  );
+  const createdMosque = await createMosqueAsAdmin(app, adminSession.accessToken, {
+    name: 'Pending Status Hidden Mosque'
+  });
+
+  await pool.query(
+    `UPDATE mosques
+     SET is_verified = TRUE,
+         moderation_status = 'pending'
+     WHERE id = $1`,
+    [createdMosque.id]
+  );
+
+  const listResponse = await app.inject({
+    method: 'GET',
+    url: '/api/v1/mosques?city=Bengaluru&search=Pending%20Status%20Hidden&sort=recent'
+  });
+
+  assert.equal(listResponse.statusCode, 200);
+  assert.equal(listResponse.json().data.items.length, 0);
+
+  const nearbyResponse = await app.inject({
+    method: 'GET',
+    url: '/api/v1/mosques/nearby?latitude=12.9716&longitude=77.5946&radius=5&limit=20'
+  });
+
+  assert.equal(nearbyResponse.statusCode, 200);
+  assert.equal(nearbyResponse.json().data.items.length, 0);
+
+  const detailResponse = await app.inject({
+    method: 'GET',
+    url: `/api/v1/mosques/${createdMosque.id}`
+  });
+
+  assert.equal(detailResponse.statusCode, 404);
 
   await app.close();
 });

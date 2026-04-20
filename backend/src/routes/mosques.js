@@ -378,6 +378,16 @@ function mapBroadcastRow(row) {
   };
 }
 
+function buildPublicMosqueVisibilityClause(alias = 'm') {
+  return `COALESCE(
+    ${alias}.moderation_status,
+    CASE
+      WHEN ${alias}.is_verified = TRUE THEN 'live'
+      ELSE 'pending'
+    END
+  ) = 'live'`;
+}
+
 async function ensureMosqueExists(mosqueId, client = pool) {
   const mosqueResult = await client.query('SELECT id FROM mosques WHERE id = $1', [mosqueId]);
   if (!mosqueResult.rowCount) {
@@ -1122,6 +1132,8 @@ async function uploadMosqueImage(request, reply) {
 }
 
 export async function mosqueRoutes(app) {
+  const publicMosqueVisibilityClause = buildPublicMosqueVisibilityClause();
+
   app.post('/api/v1/mosques', { preHandler: [app.authenticate] }, async (request, reply) => {
     return createMosque(request, reply);
   });
@@ -1265,7 +1277,7 @@ export async function mosqueRoutes(app) {
       const facilities = toFacilityArray(query.facilities);
       const { page, limit, offset } = parsePagination(query, 100);
 
-      const extraWhere = ['m.is_verified = TRUE'];
+      const extraWhere = [publicMosqueVisibilityClause];
       const extraParams = [];
 
       if (query.search) {
@@ -1310,7 +1322,7 @@ export async function mosqueRoutes(app) {
     const facilities = toFacilityArray(query.facilities);
 
     const params = [];
-    const where = ['m.is_verified = TRUE'];
+    const where = [publicMosqueVisibilityClause];
 
     if (query.search) {
       params.push(`%${query.search}%`);
@@ -1430,7 +1442,7 @@ export async function mosqueRoutes(app) {
       radiusKm: resolved.radiusKm,
       limit: query.limit,
       userId,
-      extraWhere: ['m.is_verified = TRUE']
+      extraWhere: [publicMosqueVisibilityClause]
     });
 
     return successResponse({
@@ -1622,7 +1634,7 @@ export async function mosqueRoutes(app) {
        ) review_summary ON TRUE
        WHERE m.id = $1
          AND (
-           m.is_verified = TRUE
+           ${publicMosqueVisibilityClause}
            OR ($2::uuid IS NOT NULL AND m.created_by_user_id = $2::uuid)
          )`,
       [parsed.data.id, userId]
