@@ -8,6 +8,7 @@ import 'package:believer/data/auth_provider.dart';
 import 'package:believer/navigation/app_routes.dart';
 import 'package:believer/screens/mosque_admin_add_screen.dart';
 import 'package:believer/services/browser_image_picker.dart';
+import 'package:believer/services/location_preferences_service.dart';
 import 'package:believer/services/mosque_service.dart';
 import 'package:believer/models/mosque_model.dart';
 
@@ -115,6 +116,27 @@ class _FakeBrowserImagePicker implements BrowserImagePicker {
   }
 }
 
+class _FakeLocationPreferencesService extends LocationPreferencesService {
+  String? lastQuery;
+
+  @override
+  Future<List<LocationSuggestion>> searchLocations(
+    String query, {
+    int limit = 5,
+  }) async {
+    lastQuery = query;
+    return const <LocationSuggestion>[
+      LocationSuggestion(
+        label: '101 Mosque Ave, Tampa, FL, USA',
+        latitude: 27.9506,
+        longitude: -82.4572,
+        primaryText: 'Downtown Community Mosque',
+        secondaryText: 'Tampa, FL, USA',
+      ),
+    ];
+  }
+}
+
 void main() {
   testWidgets('non-admin users see guarded access state', (tester) async {
     final container = ProviderContainer(
@@ -148,6 +170,7 @@ void main() {
   testWidgets('admin users submit the live mosque payload', (tester) async {
     final service = _RecordingMosqueService();
     final imagePicker = _FakeBrowserImagePicker();
+    final locationPreferencesService = _FakeLocationPreferencesService();
     final container = ProviderContainer(
       overrides: [authProvider.overrideWith(_AdminAuthNotifier.new)],
     );
@@ -166,6 +189,7 @@ void main() {
           home: MosqueAdminAddScreen(
             mosqueService: service,
             imagePicker: imagePicker,
+            locationPreferencesService: locationPreferencesService,
           ),
         ),
       ),
@@ -204,6 +228,34 @@ void main() {
     await tester.pumpAndSettle();
     await tester.enterText(fields.at(5), '15 Unity Street');
 
+    await tester.enterText(
+      find.byKey(const ValueKey('admin-add-location-search')),
+      'Downtown Community Mosque',
+    );
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+
+    expect(locationPreferencesService.lastQuery, 'Downtown Community Mosque');
+    expect(find.text('Downtown Community Mosque'), findsWidgets);
+
+    await tester.tap(
+      find.byKey(const ValueKey('admin-add-location-option-0')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.widget<TextFormField>(fields.at(10)).controller!.text,
+      '27.950600',
+    );
+    expect(
+      tester.widget<TextFormField>(fields.at(11)).controller!.text,
+      '-82.457200',
+    );
+
+    await tester.enterText(fields.at(10), '27.9511');
+    await tester.enterText(fields.at(11), '-82.4588');
+    await tester.pumpAndSettle();
+
     expect(find.text('Published Events'), findsNothing);
     expect(find.byKey(const ValueKey('event-add')), findsNothing);
 
@@ -234,8 +286,8 @@ void main() {
     expect(service.lastPayload!['city'], 'Bengaluru');
     expect(service.lastPayload!['state'], 'Karnataka');
     expect(service.lastPayload!['country'], 'India');
-    expect(service.lastPayload!['latitude'], 12.9716);
-    expect(service.lastPayload!['longitude'], 77.5946);
+    expect(service.lastPayload!['latitude'], 27.9511);
+    expect(service.lastPayload!['longitude'], -82.4588);
     expect(
       service.lastPayload!['prayerTimeConfig'],
       <String, dynamic>{
@@ -260,5 +312,11 @@ void main() {
     expect(find.text('Created Successfully'), findsOneWidget);
     expect(find.text('Admin Created Mosque'), findsWidgets);
     expect(find.text('Manage Mosque'), findsOneWidget);
+    expect(
+      find.text(
+        'Coordinates were auto-filled from Google Maps and then edited manually. Your visible values will be saved.',
+      ),
+      findsOneWidget,
+    );
   });
 }

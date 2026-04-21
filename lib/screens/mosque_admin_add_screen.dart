@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -9,6 +11,7 @@ import '../navigation/mosque_detail_route_args.dart';
 import '../navigation/app_routes.dart';
 import '../services/api_client.dart';
 import '../services/browser_image_picker.dart';
+import '../services/location_preferences_service.dart';
 import '../services/mosque_service.dart';
 import '../theme/app_colors.dart';
 import '../widgets/mosque_image_upload_field.dart';
@@ -19,10 +22,12 @@ class MosqueAdminAddScreen extends ConsumerStatefulWidget {
     super.key,
     this.mosqueService,
     this.imagePicker,
+    this.locationPreferencesService,
   });
 
   final MosqueService? mosqueService;
   final BrowserImagePicker? imagePicker;
+  final LocationPreferencesService? locationPreferencesService;
 
   @override
   ConsumerState<MosqueAdminAddScreen> createState() =>
@@ -42,6 +47,7 @@ class _MosqueAdminAddScreenState extends ConsumerState<MosqueAdminAddScreen> {
   final _stateCtrl = TextEditingController(text: 'Karnataka');
   final _countryCtrl = TextEditingController(text: 'India');
   final _zipCtrl = TextEditingController();
+  final _locationSearchCtrl = TextEditingController();
   final _latitudeCtrl = TextEditingController(text: '12.9716');
   final _longitudeCtrl = TextEditingController(text: '77.5946');
   final Map<String, TextEditingController> _offsetCtrls = {
@@ -51,6 +57,7 @@ class _MosqueAdminAddScreenState extends ConsumerState<MosqueAdminAddScreen> {
 
   late final MosqueService _mosqueService;
   late final BrowserImagePicker _imagePicker;
+  late final LocationPreferencesService _locationPreferencesService;
 
   String _sect = 'Sunni';
   int _calculationMethod = 3;
@@ -69,16 +76,33 @@ class _MosqueAdminAddScreenState extends ConsumerState<MosqueAdminAddScreen> {
   String? _imageUploadErrorText;
   MosqueModel? _createdMosque;
   List<String> _uploadedImageUrls = <String>[];
+  Timer? _locationSearchDebounce;
+  List<LocationSuggestion> _locationSuggestions =
+      const <LocationSuggestion>[];
+  LocationSuggestion? _selectedLocationSuggestion;
+  String? _locationSearchFeedback;
+  bool _locationSearchFeedbackIsError = false;
+  bool _isSearchingLocation = false;
+  bool _hasGoogleAutoFilledCoordinates = false;
+  bool _hasManualCoordinateOverride = false;
+  bool _isApplyingGoogleCoordinates = false;
+  String? _coordinateStatusText;
+  bool _coordinateStatusIsManualOverride = false;
 
   @override
   void initState() {
     super.initState();
     _mosqueService = widget.mosqueService ?? MosqueService();
     _imagePicker = widget.imagePicker ?? createBrowserImagePicker();
+    _locationPreferencesService =
+        widget.locationPreferencesService ?? LocationPreferencesService();
+    _latitudeCtrl.addListener(_handleCoordinateEdited);
+    _longitudeCtrl.addListener(_handleCoordinateEdited);
   }
 
   @override
   void dispose() {
+    _locationSearchDebounce?.cancel();
     _nameCtrl.dispose();
     _contactNameCtrl.dispose();
     _phoneCtrl.dispose();
@@ -89,6 +113,7 @@ class _MosqueAdminAddScreenState extends ConsumerState<MosqueAdminAddScreen> {
     _stateCtrl.dispose();
     _countryCtrl.dispose();
     _zipCtrl.dispose();
+    _locationSearchCtrl.dispose();
     _latitudeCtrl.dispose();
     _longitudeCtrl.dispose();
     for (final controller in _offsetCtrls.values) {
@@ -125,6 +150,117 @@ class _MosqueAdminAddScreenState extends ConsumerState<MosqueAdminAddScreen> {
 
   bool get _hasReachedImageLimit =>
       _uploadedImageUrls.length >= MosqueService.maxMosqueImages;
+
+  String get _coordinateHelperText {
+    if (_hasManualCoordinateOverride) {
+      return 'Manual value will be saved.';
+    }
+    if (_hasGoogleAutoFilledCoordinates) {
+      return 'Auto-filled from Google Maps. You can edit this.';
+    }
+    return 'Enter manually or use Google Maps search above.';
+  }
+
+  void _handleCoordinateEdited() {
+    if (_isApplyingGoogleCoordinates ||
+        !_hasGoogleAutoFilledCoordinates ||
+        _hasManualCoordinateOverride) {
+      return;
+    }
+
+    setState(() {
+      _hasManualCoordinateOverride = true;
+      _coordinateStatusIsManualOverride = true;
+      _coordinateStatusText =
+          'Coordinates were auto-filled from Google Maps and then edited manually. Your visible values will be saved.';
+    });
+  }
+
+  Future<void> _searchLocationSuggestions(String rawValue) async {
+    final query = rawValue.trim();
+    _locationSearchDebounce?.cancel();
+
+    if (_selectedLocationSuggestion != null &&
+        _selectedLocationSuggestion!.label.toLowerCase() != query.toLowerCase()) {
+      setState(() => _selectedLocationSuggestion = null);
+    }
+
+    if (query.length < 2) {
+      setState(() {
+        _locationSuggestions = const <LocationSuggestion>[];
+        _isSearchingLocation = false;
+        _locationSearchFeedback = query.isEmpty
+            ? 'Search Google Maps for a mosque or place to auto-fill coordinates.'
+            : 'Enter at least 2 characters to search.';
+        _locationSearchFeedbackIsError = false;
+      });
+      return;
+    }
+
+    setState(() {
+      _isSearchingLocation = true;
+      _locationSearchFeedback = null;
+      _locationSearchFeedbackIsError = false;
+    });
+
+    _locationSearchDebounce = Timer(const Duration(milliseconds: 250), () async {
+      try {
+        final results =
+            await _locationPreferencesService.searchLocations(query);
+        if (!mounted || _locationSearchCtrl.text.trim() != query) {
+          return;
+        }
+
+        setState(() {
+          _locationSuggestions = results;
+          _isSearchingLocation = false;
+          _locationSearchFeedback = results.isEmpty
+              ? 'No Google Maps matches yet. You can still enter coordinates manually.'
+              : null;
+          _locationSearchFeedbackIsError = false;
+        });
+      } catch (_) {
+        if (!mounted || _locationSearchCtrl.text.trim() != query) {
+          return;
+        }
+
+        setState(() {
+          _locationSuggestions = const <LocationSuggestion>[];
+          _isSearchingLocation = false;
+          _locationSearchFeedback =
+              'Google Maps search is unavailable right now. You can still enter coordinates manually.';
+          _locationSearchFeedbackIsError = true;
+        });
+      }
+    });
+  }
+
+  void _selectLocationSuggestion(LocationSuggestion suggestion) {
+    _isApplyingGoogleCoordinates = true;
+    _latitudeCtrl.text = suggestion.latitude.toStringAsFixed(6);
+    _longitudeCtrl.text = suggestion.longitude.toStringAsFixed(6);
+    _isApplyingGoogleCoordinates = false;
+
+    if (_addressCtrl.text.trim().isEmpty) {
+      _addressCtrl.text = suggestion.label;
+    }
+
+    setState(() {
+      _selectedLocationSuggestion = suggestion;
+      _locationSuggestions = const <LocationSuggestion>[];
+      _locationSearchCtrl.value = TextEditingValue(
+        text: suggestion.label,
+        selection: TextSelection.collapsed(offset: suggestion.label.length),
+      );
+      _locationSearchFeedback = null;
+      _locationSearchFeedbackIsError = false;
+      _hasGoogleAutoFilledCoordinates = true;
+      _hasManualCoordinateOverride = false;
+      _coordinateStatusIsManualOverride = false;
+      _coordinateStatusText =
+          'Coordinates auto-filled from Google Maps. You can edit latitude and longitude before saving.';
+    });
+  }
 
   Future<void> _pickImage() async {
     try {
@@ -477,6 +613,43 @@ class _MosqueAdminAddScreenState extends ConsumerState<MosqueAdminAddScreen> {
                   title: 'Location',
                   child: Column(
                     children: [
+                      _LocationSearchField(
+                        key: const ValueKey('admin-add-location-search'),
+                        controller: _locationSearchCtrl,
+                        onChanged: _searchLocationSuggestions,
+                      ),
+                      const SizedBox(height: 8),
+                      const Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'Search Google Maps for a mosque or place to auto-fill coordinates. You can still review the address fields and edit latitude/longitude manually.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: AppColors.mutedText,
+                          ),
+                        ),
+                      ),
+                      if (_isSearchingLocation ||
+                          _locationSuggestions.isNotEmpty ||
+                          _locationSearchFeedback != null) ...[
+                        const SizedBox(height: 10),
+                        _LocationSuggestionPanel(
+                          isSearching: _isSearchingLocation,
+                          suggestions: _locationSuggestions,
+                          feedback: _locationSearchFeedback,
+                          feedbackIsError: _locationSearchFeedbackIsError,
+                          selectedSuggestion: _selectedLocationSuggestion,
+                          onSelectSuggestion: _selectLocationSuggestion,
+                        ),
+                      ],
+                      if (_coordinateStatusText != null) ...[
+                        const SizedBox(height: 10),
+                        _CoordinateStatusCard(
+                          message: _coordinateStatusText!,
+                          manualOverride: _coordinateStatusIsManualOverride,
+                        ),
+                      ],
+                      const SizedBox(height: 10),
                       _InputField(
                         label: 'Address',
                         controller: _addressCtrl,
@@ -534,6 +707,7 @@ class _MosqueAdminAddScreenState extends ConsumerState<MosqueAdminAddScreen> {
                                 decimal: true,
                               ),
                               validator: _latitudeValidator,
+                              helperText: _coordinateHelperText,
                             ),
                           ),
                           const SizedBox(width: 10),
@@ -547,6 +721,7 @@ class _MosqueAdminAddScreenState extends ConsumerState<MosqueAdminAddScreen> {
                                 decimal: true,
                               ),
                               validator: _longitudeValidator,
+                              helperText: _coordinateHelperText,
                             ),
                           ),
                         ],
@@ -976,6 +1151,258 @@ class _CardSection extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           child,
+        ],
+      ),
+    );
+  }
+}
+
+class _LocationSearchField extends StatelessWidget {
+  const _LocationSearchField({
+    super.key,
+    required this.controller,
+    required this.onChanged,
+  });
+
+  final TextEditingController controller;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      key: key,
+      controller: controller,
+      onChanged: onChanged,
+      textInputAction: TextInputAction.search,
+      style: const TextStyle(
+        fontSize: 14,
+        color: AppColors.primaryText,
+      ),
+      decoration: InputDecoration(
+        isDense: true,
+        hintText: 'Search mosque or place on Google Maps',
+        hintStyle: const TextStyle(
+          fontSize: 13,
+          color: AppColors.mutedText,
+        ),
+        prefixIcon: const Icon(
+          Icons.search_rounded,
+          color: AppColors.iconSecondary,
+        ),
+        filled: true,
+        fillColor: Colors.white,
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: AppColors.line),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: AppColors.line),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: AppColors.accent, width: 1.2),
+        ),
+      ),
+    );
+  }
+}
+
+class _LocationSuggestionPanel extends StatelessWidget {
+  const _LocationSuggestionPanel({
+    required this.isSearching,
+    required this.suggestions,
+    required this.feedback,
+    required this.feedbackIsError,
+    required this.selectedSuggestion,
+    required this.onSelectSuggestion,
+  });
+
+  final bool isSearching;
+  final List<LocationSuggestion> suggestions;
+  final String? feedback;
+  final bool feedbackIsError;
+  final LocationSuggestion? selectedSuggestion;
+  final ValueChanged<LocationSuggestion> onSelectSuggestion;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.line),
+      ),
+      child: Column(
+        children: [
+          if (isSearching)
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Searching Google Maps...',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: AppColors.mutedText,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else if (suggestions.isNotEmpty)
+            for (var index = 0; index < suggestions.length; index++) ...[
+              _LocationSuggestionTile(
+                key: ValueKey('admin-add-location-option-$index'),
+                suggestion: suggestions[index],
+                selected: selectedSuggestion?.label.toLowerCase() ==
+                    suggestions[index].label.toLowerCase(),
+                onTap: () => onSelectSuggestion(suggestions[index]),
+              ),
+              if (index != suggestions.length - 1)
+                const Divider(height: 1, color: AppColors.line),
+            ]
+          else if (feedback != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  feedback!,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: feedbackIsError
+                        ? const Color(0xFF8C4C3A)
+                        : AppColors.mutedText,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LocationSuggestionTile extends StatelessWidget {
+  const _LocationSuggestionTile({
+    super.key,
+    required this.suggestion,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final LocationSuggestion suggestion;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final title = suggestion.primaryText ?? suggestion.label;
+    final subtitle =
+        suggestion.secondaryText ?? 'Use this result to auto-fill coordinates.';
+
+    return Material(
+      color: selected ? AppColors.surfaceMuted : Colors.white,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          child: Row(
+            children: [
+              const Icon(
+                Icons.place_outlined,
+                color: AppColors.iconSecondary,
+                size: 18,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.primaryText,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: AppColors.mutedText,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CoordinateStatusCard extends StatelessWidget {
+  const _CoordinateStatusCard({
+    required this.message,
+    required this.manualOverride,
+  });
+
+  final String message;
+  final bool manualOverride;
+
+  @override
+  Widget build(BuildContext context) {
+    final backgroundColor =
+        manualOverride ? const Color(0xFFF4F1E8) : const Color(0xFFF1F6F0);
+    final borderColor =
+        manualOverride ? const Color(0xFFE2D8BE) : const Color(0xFFD5E5D3);
+    final icon =
+        manualOverride ? Icons.edit_location_alt_outlined : Icons.check_circle;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: borderColor),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 18, color: AppColors.secondaryText),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: const TextStyle(
+                fontSize: 12,
+                color: AppColors.secondaryText,
+              ),
+            ),
+          ),
         ],
       ),
     );

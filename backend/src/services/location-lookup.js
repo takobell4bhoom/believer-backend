@@ -85,8 +85,7 @@ export function createLocationLookupService({
       const payload = await requestGoogleJson(
         GOOGLE_PLACE_AUTOCOMPLETE_ENDPOINT,
         {
-          input: normalizedQuery,
-          types: 'geocode'
+          input: normalizedQuery
         }
       );
 
