@@ -19,6 +19,7 @@ import 'package:believer/screens/map_screen.dart';
 import 'package:believer/services/current_location_service.dart';
 import 'package:believer/services/location_preferences_service.dart';
 import 'package:believer/services/mosque_service.dart';
+import 'package:believer/services/user_prayer_timings_service.dart';
 
 String _todayIsoDate() {
   final now = DateTime.now();
@@ -49,6 +50,7 @@ class _FakeMosqueService extends MosqueService {
     List<NotificationEnabledMosque>? notificationMosques,
     this.nowProvider,
     this.nonTodayDelay = Duration.zero,
+    this.onPrayerTimingsRequest,
   })  : _eventTitles = eventTitles ??
             const <String>[
               'Backend Community Iftar',
@@ -71,6 +73,8 @@ class _FakeMosqueService extends MosqueService {
   final List<NotificationEnabledMosque> _notificationMosques;
   final DateTime Function()? nowProvider;
   final Duration nonTodayDelay;
+  final PrayerTimings Function(String mosqueId, String date)?
+      onPrayerTimingsRequest;
   int _contentCallCount = 0;
   final List<_PrayerTimeRequest> prayerTimeRequests = [];
 
@@ -127,6 +131,9 @@ class _FakeMosqueService extends MosqueService {
     if (!isToday && nonTodayDelay > Duration.zero) {
       await Future<void>.delayed(nonTodayDelay);
     }
+    if (onPrayerTimingsRequest != null) {
+      return onPrayerTimingsRequest!(mosqueId, date);
+    }
     final nextPrayer = isToday ? _nextPrayerFor(now) : null;
 
     return PrayerTimings(
@@ -174,6 +181,43 @@ class _FakeMosqueService extends MosqueService {
     String? bearerToken,
   }) async {
     return _notificationMosques;
+  }
+}
+
+class _FakeUserPrayerTimingsService extends UserPrayerTimingsService {
+  _FakeUserPrayerTimingsService({
+    this.onRequest,
+  });
+
+  final PrayerTimings Function(
+    String date,
+    double latitude,
+    double longitude,
+    String school,
+  )? onRequest;
+  final List<Map<String, Object?>> requests = <Map<String, Object?>>[];
+
+  @override
+  Future<PrayerTimings> getDailyTimings({
+    required String date,
+    required double latitude,
+    required double longitude,
+    required String school,
+    int? calculationMethodId,
+  }) async {
+    requests.add(<String, Object?>{
+      'date': date,
+      'latitude': latitude,
+      'longitude': longitude,
+      'school': school,
+      'method': calculationMethodId,
+    });
+
+    if (onRequest != null) {
+      return onRequest!(date, latitude, longitude, school);
+    }
+
+    return _buildLocationPrayerTimings(date: date);
   }
 }
 
@@ -266,6 +310,111 @@ class _TrackingMosqueNotifier extends MosqueNotifier {
   }
 }
 
+HomePage1 _buildHomePage({
+  required _FakeMosqueService mosqueService,
+  required LocationPreferencesService locationPreferencesService,
+  required DateTime Function() nowProvider,
+  UserPrayerTimingsService? userPrayerTimingsService,
+}) {
+  return HomePage1(
+    mosqueService: mosqueService,
+    locationPreferencesService: locationPreferencesService,
+    userPrayerTimingsService:
+        userPrayerTimingsService ?? _FakeUserPrayerTimingsService(),
+    nowProvider: nowProvider,
+  );
+}
+
+PrayerTimings _buildLocationPrayerTimings({
+  required String date,
+  String nextPrayer = 'Asr',
+  String nextPrayerTime = '04:39 PM',
+}) {
+  return PrayerTimings(
+    mosqueId: '',
+    date: date,
+    status: 'ready',
+    isConfigured: true,
+    isAvailable: true,
+    source: 'aladhan',
+    unavailableReason: null,
+    timezone: 'America/New_York',
+    configuration: const PrayerTimeConfiguration(
+      enabled: true,
+      latitude: 27.9506,
+      longitude: -82.4572,
+      calculationMethodId: 3,
+      calculationMethodName: 'Muslim World League',
+      school: 'hanafi',
+      schoolLabel: 'Hanafi',
+      adjustments: {
+        'fajr': 0,
+        'sunrise': 0,
+        'dhuhr': 0,
+        'asr': 0,
+        'maghrib': 0,
+        'isha': 0,
+      },
+    ),
+    timings: const <String, String>{
+      'fajr': '05:12 AM',
+      'sunrise': '06:22 AM',
+      'dhuhr': '01:19 PM',
+      'asr': '04:39 PM',
+      'maghrib': '06:47 PM',
+      'isha': '08:01 PM',
+    },
+    nextPrayer: nextPrayer,
+    nextPrayerTime: nextPrayerTime,
+    cachedAt: '2026-03-30T04:00:00.000Z',
+  );
+}
+
+PrayerTimings _buildUnavailableMosquePrayerTimings({
+  required String mosqueId,
+  required String date,
+}) {
+  return PrayerTimings(
+    mosqueId: mosqueId,
+    date: date,
+    status: 'temporarily_unavailable',
+    isConfigured: true,
+    isAvailable: false,
+    source: 'cache',
+    unavailableReason:
+        'Prayer times from this mosque are temporarily unavailable.',
+    timezone: 'America/New_York',
+    configuration: const PrayerTimeConfiguration(
+      enabled: true,
+      latitude: 27.9506,
+      longitude: -82.4572,
+      calculationMethodId: 3,
+      calculationMethodName: 'Muslim World League',
+      school: 'hanafi',
+      schoolLabel: 'Hanafi',
+      adjustments: {
+        'fajr': 0,
+        'sunrise': 0,
+        'dhuhr': 0,
+        'asr': 0,
+        'maghrib': 0,
+        'isha': 0,
+      },
+    ),
+    timings: const <String, String>{
+      'fajr': '',
+      'sunrise': '',
+      'dhuhr': '',
+      'asr': '',
+      'maghrib': '',
+      'isha': '',
+    },
+    nextPrayer: '',
+    nextPrayerTime: '',
+    cachedAt: null,
+  );
+}
+
 class _FakeLocationPreferencesService extends LocationPreferencesService {
   _FakeLocationPreferencesService(this.savedLocation);
 
@@ -354,7 +503,7 @@ void main() {
               );
             },
           },
-          home: HomePage1(
+          home: _buildHomePage(
             mosqueService: service,
             locationPreferencesService: _preciseLocationService(),
             nowProvider: () => fixedNow,
@@ -376,7 +525,7 @@ void main() {
     );
     expect(
       find.text(
-        'For East London Mosque and London Muslim Centre • London, England',
+        'Prayer times from East London Mosque and London Muslim Centre',
       ),
       findsOneWidget,
     );
@@ -384,8 +533,8 @@ void main() {
     expect(find.text('Dhuhr'), findsWidgets);
     expect(find.text('Until 04:02 PM'), findsOneWidget);
     expect(service.prayerTimeRequests, isNotEmpty);
-    expect(service.prayerTimeRequests.first.mosqueId, 'mosque-001');
-    expect(service.prayerTimeRequests.first.date, _todayIsoDate());
+    expect(service.prayerTimeRequests.last.mosqueId, 'mosque-001');
+    expect(service.prayerTimeRequests.last.date, _todayIsoDate());
     expect(find.text('Backend Community Iftar'), findsOneWidget);
     expect(find.text('View more nearby mosques'), findsOneWidget);
     expect(find.text('Following\n2 mosques'), findsOneWidget);
@@ -472,7 +621,7 @@ void main() {
       UncontrolledProviderScope(
         container: container,
         child: MaterialApp(
-          home: HomePage1(
+          home: _buildHomePage(
             mosqueService: service,
             locationPreferencesService: _preciseLocationService(),
             nowProvider: () => fixedNow,
@@ -521,7 +670,7 @@ void main() {
       UncontrolledProviderScope(
         container: container,
         child: MaterialApp(
-          home: HomePage1(
+          home: _buildHomePage(
             mosqueService: service,
             locationPreferencesService: _preciseLocationService(),
             nowProvider: () => fixedNow,
@@ -559,7 +708,7 @@ void main() {
           routes: {
             AppRoutes.login: (_) => const Scaffold(body: Text('Login stub')),
           },
-          home: HomePage1(
+          home: _buildHomePage(
             mosqueService: service,
             locationPreferencesService: _preciseLocationService(),
             nowProvider: () => fixedNow,
@@ -582,6 +731,248 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Login stub'), findsOneWidget);
+  });
+
+  testWidgets(
+      'home page defaults to location prayer times when no followed mosques exist',
+      (tester) async {
+    final fixedNow = _todayAt(15, 0);
+    _TrackingMosqueNotifier.mosques = const <MosqueModel>[
+      MosqueModel(
+        id: 'local-mosque-1',
+        name: 'Local Mosque One',
+        addressLine: '10 Mercy Road',
+        city: 'Tampa',
+        state: 'FL',
+        country: 'US',
+        imageUrl: '',
+        rating: 4.7,
+        distanceMiles: 1.1,
+        sect: 'Community',
+        womenPrayerArea: true,
+        parking: true,
+        wudu: true,
+        facilities: <String>['women_area', 'parking', 'wudu'],
+        isVerified: true,
+        isBookmarked: false,
+        duhrTime: '01:15 PM',
+        asarTime: '04:06 PM',
+        isOpenNow: true,
+        classTags: <String>['Quran Study'],
+        eventTags: <String>['Family Night'],
+      ),
+      MosqueModel(
+        id: 'local-mosque-2',
+        name: 'Local Mosque Two',
+        addressLine: '14 Peace Street',
+        city: 'Tampa',
+        state: 'FL',
+        country: 'US',
+        imageUrl: '',
+        rating: 4.6,
+        distanceMiles: 2.4,
+        sect: 'Community',
+        womenPrayerArea: true,
+        parking: true,
+        wudu: true,
+        facilities: <String>['women_area', 'parking', 'wudu'],
+        isVerified: true,
+        isBookmarked: false,
+        duhrTime: '01:12 PM',
+        asarTime: '04:04 PM',
+        isOpenNow: true,
+        classTags: <String>['Sisters Circle'],
+        eventTags: <String>['Food Drive'],
+      ),
+    ];
+    final mosqueService = _FakeMosqueService(
+      nowProvider: () => fixedNow,
+      notificationMosques: const <NotificationEnabledMosque>[],
+    );
+    final locationTimingsService = _FakeUserPrayerTimingsService();
+    final container = ProviderContainer(
+      overrides: [
+        authProvider.overrideWith(MockAuthNotifier.new),
+        mosqueProvider.overrideWith(_TrackingMosqueNotifier.new),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          home: _buildHomePage(
+            mosqueService: mosqueService,
+            locationPreferencesService: _preciseLocationService(),
+            userPrayerTimingsService: locationTimingsService,
+            nowProvider: () => fixedNow,
+          ),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    expect(find.text('Prayer times for Tampa, Florida'), findsOneWidget);
+    expect(find.text('04:39 PM'), findsWidgets);
+    expect(mosqueService.prayerTimeRequests, isEmpty);
+    expect(locationTimingsService.requests, isNotEmpty);
+  });
+
+  testWidgets(
+      'home page uses the nearest followed mosque when multiple favourites exist',
+      (tester) async {
+    final fixedNow = _todayAt(15, 0);
+    _TrackingMosqueNotifier.mosques = const <MosqueModel>[
+      MosqueModel(
+        id: 'far-favourite',
+        name: 'Far Favourite Mosque',
+        addressLine: '50 Unity Avenue',
+        city: 'Tampa',
+        state: 'FL',
+        country: 'US',
+        imageUrl: '',
+        rating: 4.6,
+        distanceMiles: 3.2,
+        sect: 'Community',
+        womenPrayerArea: true,
+        parking: true,
+        wudu: true,
+        facilities: <String>['women_area', 'parking', 'wudu'],
+        isVerified: true,
+        isBookmarked: true,
+        duhrTime: '01:11 PM',
+        asarTime: '04:01 PM',
+        isOpenNow: true,
+        classTags: <String>['Arabic'],
+        eventTags: <String>['Lecture'],
+      ),
+      MosqueModel(
+        id: 'near-favourite',
+        name: 'Near Favourite Mosque',
+        addressLine: '12 Mercy Road',
+        city: 'Tampa',
+        state: 'FL',
+        country: 'US',
+        imageUrl: '',
+        rating: 4.8,
+        distanceMiles: 0.7,
+        sect: 'Community',
+        womenPrayerArea: true,
+        parking: true,
+        wudu: true,
+        facilities: <String>['women_area', 'parking', 'wudu'],
+        isVerified: true,
+        isBookmarked: true,
+        duhrTime: '01:14 PM',
+        asarTime: '04:05 PM',
+        isOpenNow: true,
+        classTags: <String>['Quran Study'],
+        eventTags: <String>['Family Night'],
+      ),
+    ];
+    final mosqueService = _FakeMosqueService(
+      nowProvider: () => fixedNow,
+      notificationMosques: const <NotificationEnabledMosque>[],
+    );
+    final container = ProviderContainer(
+      overrides: [
+        authProvider.overrideWith(MockAuthNotifier.new),
+        mosqueProvider.overrideWith(_TrackingMosqueNotifier.new),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          home: _buildHomePage(
+            mosqueService: mosqueService,
+            locationPreferencesService: _preciseLocationService(),
+            nowProvider: () => fixedNow,
+          ),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    expect(
+        find.text('Prayer times from Near Favourite Mosque'), findsOneWidget);
+    expect(mosqueService.prayerTimeRequests, hasLength(1));
+    expect(mosqueService.prayerTimeRequests.single.mosqueId, 'near-favourite');
+  });
+
+  testWidgets(
+      'home page falls back to location prayer times when favourite mosque timings are unavailable',
+      (tester) async {
+    final fixedNow = _todayAt(15, 0);
+    _TrackingMosqueNotifier.mosques = const <MosqueModel>[
+      MosqueModel(
+        id: 'fallback-mosque',
+        name: 'Fallback Mosque',
+        addressLine: '18 Hope Lane',
+        city: 'Tampa',
+        state: 'FL',
+        country: 'US',
+        imageUrl: '',
+        rating: 4.5,
+        distanceMiles: 0.9,
+        sect: 'Community',
+        womenPrayerArea: true,
+        parking: true,
+        wudu: true,
+        facilities: <String>['women_area', 'parking', 'wudu'],
+        isVerified: true,
+        isBookmarked: true,
+        duhrTime: '01:13 PM',
+        asarTime: '04:03 PM',
+        isOpenNow: true,
+        classTags: <String>['Hadith'],
+        eventTags: <String>['Youth Meetup'],
+      ),
+    ];
+    final mosqueService = _FakeMosqueService(
+      nowProvider: () => fixedNow,
+      notificationMosques: const <NotificationEnabledMosque>[],
+      onPrayerTimingsRequest: (mosqueId, date) =>
+          _buildUnavailableMosquePrayerTimings(
+        mosqueId: mosqueId,
+        date: date,
+      ),
+    );
+    final locationTimingsService = _FakeUserPrayerTimingsService();
+    final container = ProviderContainer(
+      overrides: [
+        authProvider.overrideWith(MockAuthNotifier.new),
+        mosqueProvider.overrideWith(_TrackingMosqueNotifier.new),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          home: _buildHomePage(
+            mosqueService: mosqueService,
+            locationPreferencesService: _preciseLocationService(),
+            userPrayerTimingsService: locationTimingsService,
+            nowProvider: () => fixedNow,
+          ),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    expect(find.text('Prayer times for Tampa, Florida'), findsOneWidget);
+    expect(find.text('Prayer times from Fallback Mosque'), findsNothing);
+    expect(mosqueService.prayerTimeRequests, hasLength(1));
+    expect(mosqueService.prayerTimeRequests.single.mosqueId, 'fallback-mosque');
+    expect(locationTimingsService.requests, isNotEmpty);
   });
 
   testWidgets(
@@ -636,7 +1027,7 @@ void main() {
       UncontrolledProviderScope(
         container: container,
         child: MaterialApp(
-          home: HomePage1(
+          home: _buildHomePage(
             mosqueService: service,
             locationPreferencesService: _preciseLocationService(),
             nowProvider: () => fixedNow,
@@ -673,7 +1064,7 @@ void main() {
       UncontrolledProviderScope(
         container: container,
         child: MaterialApp(
-          home: HomePage1(
+          home: _buildHomePage(
             mosqueService: service,
             locationPreferencesService: _preciseLocationService(),
             nowProvider: () => fixedNow,
@@ -720,7 +1111,7 @@ void main() {
       UncontrolledProviderScope(
         container: container,
         child: MaterialApp(
-          home: HomePage1(
+          home: _buildHomePage(
             mosqueService: service,
             locationPreferencesService: _preciseLocationService(),
             nowProvider: () => fixedNow,
@@ -765,7 +1156,7 @@ void main() {
       UncontrolledProviderScope(
         container: container,
         child: MaterialApp(
-          home: HomePage1(
+          home: _buildHomePage(
             mosqueService: service,
             locationPreferencesService: _preciseLocationService(),
             nowProvider: () => fixedNow,
@@ -809,7 +1200,7 @@ void main() {
       UncontrolledProviderScope(
         container: container,
         child: MaterialApp(
-          home: HomePage1(
+          home: _buildHomePage(
             mosqueService: service,
             locationPreferencesService: _preciseLocationService(),
             nowProvider: () => fixedNow,
@@ -868,6 +1259,7 @@ void main() {
     final service = _FakeMosqueService(
       nowProvider: () => fixedNow,
     );
+    final locationTimingsService = _FakeUserPrayerTimingsService();
     final container = ProviderContainer(
       overrides: [
         authProvider.overrideWith(MockAuthNotifier.new),
@@ -880,9 +1272,10 @@ void main() {
       UncontrolledProviderScope(
         container: container,
         child: MaterialApp(
-          home: HomePage1(
+          home: _buildHomePage(
             mosqueService: service,
             locationPreferencesService: _preciseLocationService(),
+            userPrayerTimingsService: locationTimingsService,
             nowProvider: () => fixedNow,
           ),
         ),
@@ -893,8 +1286,10 @@ void main() {
 
     expect(_TrackingMosqueNotifier.lastLatitude, 27.9506);
     expect(_TrackingMosqueNotifier.lastLongitude, -82.4572);
-    expect(service.prayerTimeRequests, isNotEmpty);
-    expect(service.prayerTimeRequests.first.mosqueId, 'tracked-mosque');
+    expect(service.prayerTimeRequests, isEmpty);
+    expect(locationTimingsService.requests, isNotEmpty);
+    expect(locationTimingsService.requests.single['latitude'], 27.9506);
+    expect(locationTimingsService.requests.single['longitude'], -82.4572);
   });
 
   testWidgets(
@@ -916,7 +1311,7 @@ void main() {
       UncontrolledProviderScope(
         container: container,
         child: MaterialApp(
-          home: HomePage1(
+          home: _buildHomePage(
             mosqueService: service,
             locationPreferencesService: _FakeLocationPreferencesService(null),
             nowProvider: () => fixedNow,
@@ -971,7 +1366,7 @@ void main() {
             }
             return null;
           },
-          home: HomePage1(
+          home: _buildHomePage(
             mosqueService: service,
             locationPreferencesService: _preciseLocationService(),
             nowProvider: () => fixedNow,

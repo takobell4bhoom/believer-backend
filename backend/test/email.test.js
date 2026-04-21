@@ -26,6 +26,44 @@ test('email service builds a Flutter web hash-route reset URL', () => {
   );
 });
 
+test('email service normalizes a root reset base URL onto the reset-password route', () => {
+  const service = createEmailService({
+    provider: {
+      isConfigured: true,
+      async send() {
+        return { id: 'email-1' };
+      }
+    },
+    fromAddress: 'Believers Lens <no-reply@example.com>',
+    passwordResetBaseUrl: 'https://app.example.com',
+    passwordResetTtlMinutes: 60
+  });
+
+  assert.equal(
+    service.buildPasswordResetUrl('token-123'),
+    'https://app.example.com/reset-password?token=token-123'
+  );
+});
+
+test('email service normalizes an empty hash fragment onto the reset-password route', () => {
+  const service = createEmailService({
+    provider: {
+      isConfigured: true,
+      async send() {
+        return { id: 'email-1' };
+      }
+    },
+    fromAddress: 'Believers Lens <no-reply@example.com>',
+    passwordResetBaseUrl: 'https://app.example.com/#',
+    passwordResetTtlMinutes: 60
+  });
+
+  assert.equal(
+    service.buildPasswordResetUrl('token-123'),
+    'https://app.example.com/#/reset-password?token=token-123'
+  );
+});
+
 test('email service rejects password reset sends when required config is missing', async () => {
   const service = createEmailService({
     provider: {

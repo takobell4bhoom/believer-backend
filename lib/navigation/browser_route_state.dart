@@ -1,12 +1,13 @@
-String? resolveExplicitBrowserRoute() {
-  final directPath = _normalizePath(Uri.base.path);
+String? resolveExplicitBrowserRoute({Uri? currentUri}) {
+  final uri = currentUri ?? Uri.base;
+  final directPath = _normalizePath(uri.path);
   if (_isExplicitAuthRoute(directPath)) {
     return directPath;
   }
 
-  final fragment = Uri.base.fragment;
+  final fragment = uri.fragment;
   if (fragment.isEmpty) {
-    return null;
+    return _hasResetToken(uri) ? '/reset-password' : null;
   }
 
   final fragmentUri = _parseFragmentUri(fragment);
@@ -15,16 +16,17 @@ String? resolveExplicitBrowserRoute() {
     return fragmentPath;
   }
 
-  return null;
+  return _hasResetToken(uri) ? '/reset-password' : null;
 }
 
-String? readBrowserTokenParameter(String key) {
-  final directValue = Uri.base.queryParameters[key]?.trim();
+String? readBrowserTokenParameter(String key, {Uri? currentUri}) {
+  final uri = currentUri ?? Uri.base;
+  final directValue = uri.queryParameters[key]?.trim();
   if (directValue != null && directValue.isNotEmpty) {
     return directValue;
   }
 
-  final fragment = Uri.base.fragment;
+  final fragment = uri.fragment;
   if (fragment.isEmpty) {
     return null;
   }
@@ -56,4 +58,9 @@ String _normalizePath(String path) {
 
 bool _isExplicitAuthRoute(String path) {
   return path == '/forgot-password' || path == '/reset-password';
+}
+
+bool _hasResetToken(Uri uri) {
+  return readBrowserTokenParameter('token', currentUri: uri)?.isNotEmpty ==
+      true;
 }

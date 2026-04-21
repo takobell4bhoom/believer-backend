@@ -89,7 +89,7 @@ export class ResendEmailProvider {
 
 function resolvePasswordResetBaseUrl() {
   if (env.PASSWORD_RESET_URL_BASE) {
-    return env.PASSWORD_RESET_URL_BASE;
+    return normalizePasswordResetBaseUrl(env.PASSWORD_RESET_URL_BASE);
   }
 
   if (!env.APP_WEB_ORIGIN) {
@@ -97,6 +97,30 @@ function resolvePasswordResetBaseUrl() {
   }
 
   return `${env.APP_WEB_ORIGIN.replace(/\/+$/, '')}/#\/reset-password`;
+}
+
+function normalizePasswordResetBaseUrl(baseUrl) {
+  if (!baseUrl) {
+    return baseUrl;
+  }
+
+  if (baseUrl.includes('#')) {
+    const [prefix, fragment = ''] = baseUrl.split('#', 2);
+    const normalizedFragment = fragment.startsWith('/') ? fragment : `/${fragment}`;
+    const fragmentUrl = new URL(normalizedFragment, 'https://placeholder.local');
+
+    if (fragmentUrl.pathname === '/' || fragmentUrl.pathname === '') {
+      fragmentUrl.pathname = '/reset-password';
+    }
+
+    return `${prefix}#${fragmentUrl.pathname}${fragmentUrl.search}`;
+  }
+
+  const url = new URL(baseUrl);
+  if (url.pathname === '/' || url.pathname === '') {
+    url.pathname = '/reset-password';
+  }
+  return url.toString();
 }
 
 function buildUrlWithQuery(baseUrl, params) {
@@ -137,7 +161,7 @@ export class EmailService {
     this.provider = provider;
     this.fromAddress = fromAddress;
     this.replyToAddress = replyToAddress;
-    this.passwordResetBaseUrl = passwordResetBaseUrl;
+    this.passwordResetBaseUrl = normalizePasswordResetBaseUrl(passwordResetBaseUrl);
     this.passwordResetTtlMinutes = passwordResetTtlMinutes;
   }
 

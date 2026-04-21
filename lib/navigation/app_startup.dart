@@ -32,8 +32,8 @@ class AppStartupPolicy {
     return onboardingState.continueAsGuest ? AppRoutes.home : AppRoutes.login;
   }
 
-  static String? resolveExplicitEntryRoute() {
-    return resolveExplicitBrowserRoute();
+  static String? resolveExplicitEntryRoute({Uri? currentUri}) {
+    return resolveExplicitBrowserRoute(currentUri: currentUri);
   }
 
   Future<String> resolveUnauthenticatedRoute() async {

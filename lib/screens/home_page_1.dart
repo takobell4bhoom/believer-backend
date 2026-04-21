@@ -19,6 +19,8 @@ import '../services/location_preferences_service.dart';
 import '../services/mosque_service.dart';
 import '../services/onboarding_preferences_service.dart';
 import '../services/outbound_action_service.dart';
+import '../services/prayer_settings_service.dart';
+import '../services/user_prayer_timings_service.dart';
 import 'event_detail_screen.dart';
 import 'location_setup_screen.dart';
 import '../widgets/mosque_image_frame.dart';
@@ -33,12 +35,16 @@ class HomePage1 extends ConsumerStatefulWidget {
     super.key,
     this.mosqueService,
     this.locationPreferencesService,
+    this.prayerSettingsService,
+    this.userPrayerTimingsService,
     this.nowProvider,
     this.outboundActionService = const OutboundActionService(),
   });
 
   final MosqueService? mosqueService;
   final LocationPreferencesService? locationPreferencesService;
+  final PrayerSettingsService? prayerSettingsService;
+  final UserPrayerTimingsService? userPrayerTimingsService;
   final DateTime Function()? nowProvider;
   final OutboundActionService outboundActionService;
 
@@ -65,20 +71,27 @@ class _HomePage1State extends ConsumerState<HomePage1> {
   var _dayIndex = 0;
   late final MosqueService _mosqueService;
   late final LocationPreferencesService _locationPreferencesService;
+  late final PrayerSettingsService _prayerSettingsService;
+  late final UserPrayerTimingsService _userPrayerTimingsService;
   String _currentLocation = LocationPreferencesService.unsetLocationLabel;
   SavedUserLocation? _savedLocation;
   String? _featuredContentMosqueId;
   List<_EventCardData>? _featuredEventCards;
   bool _isLoadingFeaturedContent = false;
-  String? _featuredPrayerRequestKey;
-  PrayerTimings? _featuredPrayerTimings;
+  String? _selectedMosquePrayerRequestKey;
+  PrayerTimings? _selectedMosquePrayerTimings;
+  String? _locationPrayerRequestKey;
+  PrayerTimings? _locationPrayerTimings;
+  PrayerSettings? _prayerSettings;
   int _lastHandledContentRefreshTick = 0;
   String? _notificationMosquesRequestToken;
   List<NotificationEnabledMosque>? _notificationEnabledMosques;
   bool _isLoadingNotificationMosques = false;
   bool _notificationMosquesLoadFailed = false;
-  final Set<String> _featuredPrayerLoadingKeys = <String>{};
-  int _featuredPrayerRequestVersion = 0;
+  final Set<String> _selectedMosquePrayerLoadingKeys = <String>{};
+  final Set<String> _locationPrayerLoadingKeys = <String>{};
+  int _selectedMosquePrayerRequestVersion = 0;
+  int _locationPrayerRequestVersion = 0;
   Timer? _clockTimer;
 
   @override
@@ -87,11 +100,16 @@ class _HomePage1State extends ConsumerState<HomePage1> {
     _mosqueService = widget.mosqueService ?? MosqueService();
     _locationPreferencesService =
         widget.locationPreferencesService ?? LocationPreferencesService();
+    _prayerSettingsService =
+        widget.prayerSettingsService ?? PrayerSettingsService();
+    _userPrayerTimingsService =
+        widget.userPrayerTimingsService ?? UserPrayerTimingsService();
     _clockTimer = Timer.periodic(const Duration(minutes: 1), (_) {
       if (mounted) {
         setState(() {});
       }
     });
+    Future.microtask(_loadPrayerSettings);
     Future.microtask(_loadCurrentLocation);
   }
 
@@ -116,6 +134,17 @@ class _HomePage1State extends ConsumerState<HomePage1> {
     if (savedLocation?.hasCoordinates == true) {
       await _loadNearbyMosques(savedLocation!);
     }
+  }
+
+  Future<void> _loadPrayerSettings() async {
+    final prayerSettings = await _prayerSettingsService.load();
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _prayerSettings = prayerSettings;
+    });
   }
 
   Future<void> _loadNearbyMosques(SavedUserLocation savedLocation) async {
@@ -158,16 +187,16 @@ class _HomePage1State extends ConsumerState<HomePage1> {
     }
   }
 
-  Future<void> _loadFeaturedPrayerTimingsFor(MosqueModel mosque) async {
+  Future<void> _loadSelectedMosquePrayerTimingsFor(MosqueModel mosque) async {
     final requestedDate = _requestedPrayerDateIso();
     final requestKey = '${mosque.id}:$requestedDate';
-    if (_featuredPrayerLoadingKeys.contains(requestKey) ||
-        _featuredPrayerRequestKey == requestKey) {
+    if (_selectedMosquePrayerLoadingKeys.contains(requestKey) ||
+        _selectedMosquePrayerRequestKey == requestKey) {
       return;
     }
 
-    _featuredPrayerLoadingKeys.add(requestKey);
-    final requestVersion = ++_featuredPrayerRequestVersion;
+    _selectedMosquePrayerLoadingKeys.add(requestKey);
+    final requestVersion = ++_selectedMosquePrayerRequestVersion;
     try {
       PrayerTimings? nextPrayerTimings;
       try {
@@ -183,14 +212,64 @@ class _HomePage1State extends ConsumerState<HomePage1> {
         return;
       }
 
-      if (requestVersion == _featuredPrayerRequestVersion) {
+      if (requestVersion == _selectedMosquePrayerRequestVersion) {
         setState(() {
-          _featuredPrayerRequestKey = requestKey;
-          _featuredPrayerTimings = nextPrayerTimings;
+          _selectedMosquePrayerRequestKey = requestKey;
+          _selectedMosquePrayerTimings = nextPrayerTimings;
         });
       }
     } finally {
-      _featuredPrayerLoadingKeys.remove(requestKey);
+      _selectedMosquePrayerLoadingKeys.remove(requestKey);
+    }
+  }
+
+  Future<void> _loadLocationPrayerTimings({
+    required SavedUserLocation location,
+    required PrayerSettings prayerSettings,
+    required String requestedDate,
+  }) async {
+    final latitude = location.latitude;
+    final longitude = location.longitude;
+    if (latitude == null || longitude == null) {
+      return;
+    }
+
+    final school = prayerSettings.asarTimeMode == AsarTimeMode.late
+        ? 'hanafi'
+        : 'standard';
+    final requestKey = '$requestedDate:$latitude:$longitude:$school';
+    if (_locationPrayerLoadingKeys.contains(requestKey) ||
+        _locationPrayerRequestKey == requestKey) {
+      return;
+    }
+
+    _locationPrayerLoadingKeys.add(requestKey);
+    final requestVersion = ++_locationPrayerRequestVersion;
+    try {
+      PrayerTimings? nextPrayerTimings;
+      try {
+        nextPrayerTimings = await _userPrayerTimingsService.getDailyTimings(
+          date: requestedDate,
+          latitude: latitude,
+          longitude: longitude,
+          school: school,
+        );
+      } catch (_) {
+        nextPrayerTimings = null;
+      }
+
+      if (!mounted) {
+        return;
+      }
+
+      if (requestVersion == _locationPrayerRequestVersion) {
+        setState(() {
+          _locationPrayerRequestKey = requestKey;
+          _locationPrayerTimings = nextPrayerTimings;
+        });
+      }
+    } finally {
+      _locationPrayerLoadingKeys.remove(requestKey);
     }
   }
 
@@ -347,20 +426,46 @@ class _HomePage1State extends ConsumerState<HomePage1> {
         ref.watch(businessRegistrationFlowControllerProvider);
     final currentTime = _now();
     final hasPreciseLocation = _savedLocation?.hasCoordinates == true;
-    final featuredMosque = hasPreciseLocation &&
-            nearbyState.valueOrNull != null &&
-            nearbyState.valueOrNull!.isNotEmpty
-        ? nearbyState.valueOrNull!.first
+    final nearbyMosques = nearbyState.valueOrNull ?? const <MosqueModel>[];
+    final featuredMosque = hasPreciseLocation && nearbyMosques.isNotEmpty
+        ? nearbyMosques.first
         : null;
     final hasNearbyFeaturedMosque = featuredMosque != null;
+    final selectedPrayerMosque = hasPreciseLocation
+        ? _selectNearestFollowedMosque(
+            nearbyMosques: nearbyMosques,
+            notificationEnabledMosques: _notificationEnabledMosques,
+          )
+        : null;
     final requestedPrayerDate =
         _isoDateFor(currentTime.add(Duration(days: _dayIndex)));
-    final prayerRequestKey = featuredMosque == null
+    final mosquePrayerRequestKey = selectedPrayerMosque == null
         ? null
-        : '${featuredMosque.id}:$requestedPrayerDate';
-    final livePrayerTimings = _featuredPrayerRequestKey == prayerRequestKey
-        ? _featuredPrayerTimings
+        : '${selectedPrayerMosque.id}:$requestedPrayerDate';
+    final selectedMosquePrayerTimings =
+        _selectedMosquePrayerRequestKey == mosquePrayerRequestKey
+            ? _selectedMosquePrayerTimings
+            : null;
+    final locationPrayerRequestKey = _savedLocation?.hasCoordinates == true &&
+            _savedLocation?.latitude != null &&
+            _savedLocation?.longitude != null &&
+            _prayerSettings != null
+        ? '$requestedPrayerDate:${_savedLocation!.latitude}:${_savedLocation!.longitude}:${_prayerSettings!.asarTimeMode == AsarTimeMode.late ? 'hanafi' : 'standard'}'
         : null;
+    final locationPrayerTimings =
+        _locationPrayerRequestKey == locationPrayerRequestKey
+            ? _locationPrayerTimings
+            : null;
+    final mosquePrayerTimingsUsable =
+        _canUsePrayerTimings(selectedMosquePrayerTimings);
+    final prayerCardMosque =
+        mosquePrayerTimingsUsable ? selectedPrayerMosque : null;
+    final prayerCardTimings = mosquePrayerTimingsUsable
+        ? selectedMosquePrayerTimings
+        : locationPrayerTimings;
+    final isLoadingLocationPrayerTimings = locationPrayerRequestKey != null &&
+        _locationPrayerRequestKey != locationPrayerRequestKey &&
+        _locationPrayerLoadingKeys.contains(locationPrayerRequestKey);
     final featuredEventsReady =
         featuredMosque != null && _featuredContentMosqueId == featuredMosque.id;
     final liveEventCards = featuredEventsReady
@@ -411,14 +516,32 @@ class _HomePage1State extends ConsumerState<HomePage1> {
       });
     }
 
-    if (hasNearbyFeaturedMosque &&
-        prayerRequestKey != null &&
-        _featuredPrayerRequestKey != prayerRequestKey &&
-        !_featuredPrayerLoadingKeys.contains(prayerRequestKey)) {
-      final prayerMosque = featuredMosque;
+    if (locationPrayerRequestKey != null &&
+        _locationPrayerRequestKey != locationPrayerRequestKey &&
+        !_locationPrayerLoadingKeys.contains(locationPrayerRequestKey) &&
+        _savedLocation != null &&
+        _prayerSettings != null) {
+      final savedLocation = _savedLocation!;
+      final prayerSettings = _prayerSettings!;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
-          _loadFeaturedPrayerTimingsFor(prayerMosque);
+          _loadLocationPrayerTimings(
+            location: savedLocation,
+            prayerSettings: prayerSettings,
+            requestedDate: requestedPrayerDate,
+          );
+        }
+      });
+    }
+
+    if (selectedPrayerMosque != null &&
+        mosquePrayerRequestKey != null &&
+        _selectedMosquePrayerRequestKey != mosquePrayerRequestKey &&
+        !_selectedMosquePrayerLoadingKeys.contains(mosquePrayerRequestKey)) {
+      final prayerMosque = selectedPrayerMosque;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _loadSelectedMosquePrayerTimingsFor(prayerMosque);
         }
       });
     }
@@ -449,12 +572,12 @@ class _HomePage1State extends ConsumerState<HomePage1> {
                         const SizedBox(height: 10),
                         _PrayerCard(
                           dayIndex: _dayIndex,
-                          mosque: featuredMosque,
+                          mosque: prayerCardMosque,
                           locationLabel: _currentLocation,
                           hasSavedCoordinates: hasPreciseLocation,
-                          isLoadingNearbyContext:
-                              hasPreciseLocation && nearbyState.isLoading,
-                          prayerTimings: livePrayerTimings,
+                          isLoadingPrayerTimings: hasPreciseLocation &&
+                              isLoadingLocationPrayerTimings,
+                          prayerTimings: prayerCardTimings,
                           requestedDateIso: requestedPrayerDate,
                           currentTime: currentTime,
                           onPreviousDay: () => _shiftDay(-1),
@@ -816,7 +939,7 @@ class _PrayerCard extends StatelessWidget {
     required this.dayIndex,
     required this.locationLabel,
     required this.hasSavedCoordinates,
-    required this.isLoadingNearbyContext,
+    required this.isLoadingPrayerTimings,
     required this.mosque,
     required this.prayerTimings,
     required this.requestedDateIso,
@@ -829,7 +952,7 @@ class _PrayerCard extends StatelessWidget {
   final int dayIndex;
   final String locationLabel;
   final bool hasSavedCoordinates;
-  final bool isLoadingNearbyContext;
+  final bool isLoadingPrayerTimings;
   final MosqueModel? mosque;
   final PrayerTimings? prayerTimings;
   final String requestedDateIso;
@@ -844,7 +967,7 @@ class _PrayerCard extends StatelessWidget {
       mosque: mosque,
       locationLabel: locationLabel,
       hasSavedCoordinates: hasSavedCoordinates,
-      isLoadingNearbyContext: isLoadingNearbyContext,
+      isLoadingPrayerTimings: isLoadingPrayerTimings,
       prayerTimings: prayerTimings,
       requestedDateIso: requestedDateIso,
       dayIndex: dayIndex,
@@ -1083,7 +1206,7 @@ _PrayerCardContent _buildPrayerCardContent({
   required MosqueModel? mosque,
   required String locationLabel,
   required bool hasSavedCoordinates,
-  required bool isLoadingNearbyContext,
+  required bool isLoadingPrayerTimings,
   required PrayerTimings? prayerTimings,
   required String requestedDateIso,
   required int dayIndex,
@@ -1118,30 +1241,53 @@ _PrayerCardContent _buildPrayerCardContent({
       );
     }
 
-    return _PrayerCardContent(
+    return _buildResolvedPrayerCardContent(
       dayLabel: dayLabel,
-      dateLabel: _formatPrayerDate(resolvedDate),
-      mosqueLabel:
-          savedLabel.isEmpty ? 'Nearby prayer context' : 'Around $savedLabel',
-      eyebrowLabel: isLoadingNearbyContext ? 'LOADING' : 'NOTICE',
-      title: isLoadingNearbyContext ? 'Prayer Times' : 'Unavailable',
-      subtitle: isLoadingNearbyContext
-          ? 'Loading nearby mosque prayer context.'
-          : 'Nearby mosque prayer context is unavailable right now.',
-      statusLabel:
-          isLoadingNearbyContext ? 'Loading timings' : 'Nearby unavailable',
-      timelineItems: _buildPrayerTimelineItems(
-        prayerTimings: null,
-        isCurrentDate: true,
-        currentTime: currentTime,
-      ),
+      requestedDateIso: requestedDateIso,
+      sourceLabel: hasSavedLabel
+          ? 'Prayer times for $savedLabel'
+          : 'Prayer times for your location',
+      prayerTimings: prayerTimings,
+      currentTime: currentTime,
+      isLoadingPrayerTimings: isLoadingPrayerTimings,
+      loadingEyebrowLabel: 'LOCATION',
+      loadingSubtitle: 'Loading prayer times for your location.',
+      unavailableFallbackSubtitle:
+          'Location prayer times are unavailable right now.',
+      unavailableStatusLabel: 'Location unavailable',
     );
   }
 
-  final mosqueLocationLabel = _mosqueLocationLabel(mosque);
-  final mosqueLabel = mosqueLocationLabel.isEmpty
-      ? 'For ${mosque.name}'
-      : 'For ${mosque.name} • $mosqueLocationLabel';
+  return _buildResolvedPrayerCardContent(
+    dayLabel: dayLabel,
+    requestedDateIso: requestedDateIso,
+    sourceLabel: 'Prayer times from ${mosque.name}',
+    prayerTimings: prayerTimings,
+    currentTime: currentTime,
+    isLoadingPrayerTimings: false,
+    loadingEyebrowLabel: 'MOSQUE',
+    loadingSubtitle: 'Loading prayer times from ${mosque.name}.',
+    unavailableFallbackSubtitle:
+        'Mosque prayer times are unavailable right now.',
+    unavailableStatusLabel: 'Mosque unavailable',
+  );
+}
+
+_PrayerCardContent _buildResolvedPrayerCardContent({
+  required String dayLabel,
+  required String requestedDateIso,
+  required String sourceLabel,
+  required PrayerTimings? prayerTimings,
+  required DateTime currentTime,
+  required bool isLoadingPrayerTimings,
+  required String loadingEyebrowLabel,
+  required String loadingSubtitle,
+  required String unavailableFallbackSubtitle,
+  required String unavailableStatusLabel,
+}) {
+  final resolvedDate = prayerTimings?.date.isNotEmpty == true
+      ? prayerTimings!.date
+      : requestedDateIso;
   final isCurrentDate = resolvedDate == _isoDateFor(currentTime);
   final livePrayerWindow =
       isCurrentDate ? prayerTimings?.currentPrayerWindowAt(currentTime) : null;
@@ -1155,11 +1301,14 @@ _PrayerCardContent _buildPrayerCardContent({
     return _PrayerCardContent(
       dayLabel: dayLabel,
       dateLabel: _formatPrayerDate(resolvedDate),
-      mosqueLabel: mosqueLabel,
-      eyebrowLabel: 'LIVE',
-      title: 'Prayer Times',
-      subtitle: 'Loading the selected mosque schedule.',
-      statusLabel: 'Loading timings',
+      mosqueLabel: sourceLabel,
+      eyebrowLabel: loadingEyebrowLabel,
+      title: isLoadingPrayerTimings ? 'Prayer Times' : 'Unavailable',
+      subtitle: isLoadingPrayerTimings
+          ? loadingSubtitle
+          : unavailableFallbackSubtitle,
+      statusLabel:
+          isLoadingPrayerTimings ? 'Loading timings' : unavailableStatusLabel,
       timelineItems: timelineItems,
     );
   }
@@ -1168,11 +1317,11 @@ _PrayerCardContent _buildPrayerCardContent({
     return _PrayerCardContent(
       dayLabel: dayLabel,
       dateLabel: _formatPrayerDate(resolvedDate),
-      mosqueLabel: mosqueLabel,
+      mosqueLabel: sourceLabel,
       eyebrowLabel: 'NOTICE',
       title: 'Unavailable',
-      subtitle: 'This mosque needs prayer-time configuration in admin.',
-      statusLabel: 'Config needed',
+      subtitle: prayerTimings.unavailableReason ?? unavailableFallbackSubtitle,
+      statusLabel: unavailableStatusLabel,
       timelineItems: timelineItems,
     );
   }
@@ -1181,12 +1330,11 @@ _PrayerCardContent _buildPrayerCardContent({
     return _PrayerCardContent(
       dayLabel: dayLabel,
       dateLabel: _formatPrayerDate(resolvedDate),
-      mosqueLabel: mosqueLabel,
+      mosqueLabel: sourceLabel,
       eyebrowLabel: 'NOTICE',
       title: 'Unavailable',
-      subtitle: prayerTimings.unavailableReason ??
-          'Backend prayer timings are not available right now.',
-      statusLabel: 'Read unavailable',
+      subtitle: prayerTimings.unavailableReason ?? unavailableFallbackSubtitle,
+      statusLabel: unavailableStatusLabel,
       timelineItems: timelineItems,
     );
   }
@@ -1195,7 +1343,7 @@ _PrayerCardContent _buildPrayerCardContent({
     return _PrayerCardContent(
       dayLabel: dayLabel,
       dateLabel: _formatPrayerDate(resolvedDate),
-      mosqueLabel: mosqueLabel,
+      mosqueLabel: sourceLabel,
       eyebrowLabel: 'SCHEDULE',
       title: 'Prayer Times',
       subtitle:
@@ -1213,7 +1361,7 @@ _PrayerCardContent _buildPrayerCardContent({
     return _PrayerCardContent(
       dayLabel: dayLabel,
       dateLabel: _formatPrayerDate(resolvedDate),
-      mosqueLabel: mosqueLabel,
+      mosqueLabel: sourceLabel,
       eyebrowLabel: 'LIVE NOW',
       title: activePrayerLabel,
       subtitle: activePrayerSubtitle,
@@ -1227,7 +1375,7 @@ _PrayerCardContent _buildPrayerCardContent({
     return _PrayerCardContent(
       dayLabel: dayLabel,
       dateLabel: _formatPrayerDate(resolvedDate),
-      mosqueLabel: mosqueLabel,
+      mosqueLabel: sourceLabel,
       eyebrowLabel: 'UP NEXT',
       title: prayerTimings.nextPrayer,
       subtitle: 'Starts at ${prayerTimings.nextPrayerTime}',
@@ -1239,7 +1387,7 @@ _PrayerCardContent _buildPrayerCardContent({
   return _PrayerCardContent(
     dayLabel: dayLabel,
     dateLabel: _formatPrayerDate(resolvedDate),
-    mosqueLabel: mosqueLabel,
+    mosqueLabel: sourceLabel,
     eyebrowLabel: 'TODAY',
     title: 'Prayer Times',
     subtitle: 'Final prayer listed below for this day.',
@@ -1344,15 +1492,37 @@ String _isoDateFor(DateTime value) {
   return '${value.year}-$month-$day';
 }
 
-String _mosqueLocationLabel(MosqueModel mosque) {
-  final parts = <String>[
-    mosque.city.trim(),
-    mosque.state.trim(),
-    if (mosque.city.trim().isEmpty && mosque.state.trim().isEmpty)
-      mosque.country.trim(),
-  ].where((part) => part.isNotEmpty).toList(growable: false);
+bool _canUsePrayerTimings(PrayerTimings? prayerTimings) {
+  return prayerTimings != null &&
+      prayerTimings.isConfigured &&
+      prayerTimings.isAvailable;
+}
 
-  return parts.join(', ');
+MosqueModel? _selectNearestFollowedMosque({
+  required List<MosqueModel> nearbyMosques,
+  required List<NotificationEnabledMosque>? notificationEnabledMosques,
+}) {
+  final followedMosqueIds = <String>{
+    for (final mosque in nearbyMosques)
+      if (mosque.isBookmarked) mosque.id,
+    for (final mosque
+        in notificationEnabledMosques ?? const <NotificationEnabledMosque>[])
+      mosque.id,
+  };
+  if (followedMosqueIds.isEmpty) {
+    return null;
+  }
+
+  final matchingMosques = nearbyMosques
+      .where((mosque) => followedMosqueIds.contains(mosque.id))
+      .toList(growable: false);
+  if (matchingMosques.isEmpty) {
+    return null;
+  }
+
+  final sortedMosques = matchingMosques.toList(growable: false)
+    ..sort((left, right) => left.distanceMiles.compareTo(right.distanceMiles));
+  return sortedMosques.first;
 }
 
 String? _nextPrayerKey(String prayer) {

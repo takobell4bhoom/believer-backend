@@ -1,6 +1,7 @@
 import 'package:believer/core/api_error_mapper.dart';
 import 'package:believer/navigation/app_router.dart';
 import 'package:believer/navigation/app_routes.dart';
+import 'package:believer/navigation/app_startup.dart';
 import 'package:believer/screens/forgot_password_screen.dart';
 import 'package:believer/screens/login_screen.dart';
 import 'package:believer/screens/onboarding_screen.dart';
@@ -342,6 +343,28 @@ void main() {
   );
 
   testWidgets(
+    'valid reset links open the reset password screen through app routing',
+    (tester) async {
+      final initialRoute = AppStartupPolicy.resolveExplicitEntryRoute(
+        currentUri: Uri.parse(
+          'https://app.example.com/?token=valid-reset-token-123',
+        ),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          initialRoute: initialRoute,
+          onGenerateRoute: AppRouter.onGenerateRoute,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(ResetPasswordScreen), findsOneWidget);
+      expect(find.text('Reset Password'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
     'reset password screen submits the token-backed password change',
     (tester) async {
       final service = _FakeAuthService();
@@ -387,6 +410,29 @@ void main() {
         ),
         findsOneWidget,
       );
+    },
+  );
+
+  testWidgets(
+    'reset password screen keeps the user on the reset flow when the token is missing',
+    (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          initialRoute: AppRoutes.resetPassword,
+          onGenerateRoute: AppRouter.onGenerateRoute,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(ResetPasswordScreen), findsOneWidget);
+      expect(find.text('Reset Password'), findsOneWidget);
+      expect(
+        find.text(
+          'This reset link is incomplete or no longer includes a token. Request a new password reset email to continue.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Update Password'), findsOneWidget);
     },
   );
 
