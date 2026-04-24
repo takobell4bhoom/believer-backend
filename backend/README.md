@@ -12,7 +12,7 @@ Production-minded backend for the existing Flutter app.
 - Auth and account governance: signup, login, refresh, profile update, logout, change password, password recovery, account deactivation, support requests, and mosque suggestions
 - Mosque discovery: list, nearby lookup, detail, reviews, bookmarks, broadcasts, location resolve/suggest/reverse, and backend-owned prayer times
 - Admin mosque operations: create, edit, image upload, owned-mosque management, prayer-time configuration, and persisted mosque-page content
-- Notifications, services, and business listings: mosque notification settings, the approved-live-only public services discovery feed, backend-persisted business registration drafts/review state, and super-admin business-listing moderation
+- Notifications, services, and business listings: mosque notification settings, device-token registration for push delivery, broadcast-triggered FCM push events, the approved-live-only public services discovery feed, backend-persisted business registration drafts/review state, and super-admin business-listing moderation
 
 ## Local Setup (Mac)
 1. Start database:
@@ -29,6 +29,7 @@ Production-minded backend for the existing Flutter app.
    - `npm run seed`
 6. Start API:
    - `npm run dev`
+   - If startup reports that port `4000` is already in use, inspect the listener with `lsof -nP -iTCP:4000 -sTCP:LISTEN`, stop the stale PID with `kill <pid>`, and start again.
 7. Run smoke tests:
    - `npm test`
 8. Run integration tests:
@@ -66,13 +67,15 @@ API default: `http://localhost:4000`
 - The integration test file no longer self-skips when PostgreSQL is missing; database orchestration now lives in the script layer so failures stay loud and actionable while normal local dev data stays on `believer`.
 
 ## Route Families
-- Health: `GET /`, `GET /health`
+- Health: `GET /`, `GET /health`, `GET /api/v1/health`
 - Auth: `/api/v1/auth/*`
 - Account governance: `/api/v1/account/*`
 - Business listings: `/api/v1/business-listings*`, `/api/v1/admin/business-listings*`
 - Mosques, location lookup, content, prayer times, reviews, and broadcasts: `/api/v1/mosques*`
 - Bookmarks: `/api/v1/bookmarks*`
 - Notifications: `/api/v1/notifications*`
+  - `PUT /api/v1/notifications/devices`
+  - `DELETE /api/v1/notifications/devices/:installationId`
 - Services: `GET /api/v1/services`
   - Returns the public services feed for a supported category or alias.
   - Only approved business listings whose moderation status is `live` appear in the public feed.
@@ -92,6 +95,10 @@ API default: `http://localhost:4000`
 ## Production notes
 - Reverse-proxy deployments should set `TRUST_PROXY=true`.
 - Set `PUBLIC_API_ORIGIN=https://api.example.com` so uploaded mosque image URLs stay correct behind Nginx/HTTPS.
+- Broadcast push delivery now uses Firebase Cloud Messaging credentials from either:
+  - `FIREBASE_SERVICE_ACCOUNT_JSON`
+  - or `FCM_PROJECT_ID`, `FCM_CLIENT_EMAIL`, and `FCM_PRIVATE_KEY`
+- If those Firebase env vars are omitted, broadcast persistence still works and the app's in-app Notifications tab stays intact, but remote push delivery is skipped.
 - Start from `backend/.env.production.example` for production env setup.
 - Azure Ubuntu VM deployment notes live at `../docs/deployment/AZURE_UBUNTU_VM.md`.
 - Public launch runbook: `../docs/deployment/PUBLIC_LAUNCH_RUNBOOK.md`

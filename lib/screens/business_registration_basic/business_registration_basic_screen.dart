@@ -292,7 +292,6 @@ class _BusinessRegistrationBasicScreenState
                           const SizedBox(height: 14),
                           const BusinessRegistrationSectionLabel(
                             text: 'Logo',
-                            required: true,
                           ),
                           const SizedBox(height: 8),
                           BusinessRegistrationLogoUploadCard(

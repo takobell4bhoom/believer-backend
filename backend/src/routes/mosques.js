@@ -397,7 +397,7 @@ async function ensureMosqueExists(mosqueId, client = pool) {
 
 async function ensureMosqueOwnedByUser({ mosqueId, userId, client = pool }) {
   const result = await client.query(
-    `SELECT id, created_by_user_id
+    `SELECT id, name, created_by_user_id
      FROM mosques
      WHERE id = $1`,
     [mosqueId]
@@ -414,6 +414,8 @@ async function ensureMosqueOwnedByUser({ mosqueId, userId, client = pool }) {
       'Only the mosque owner can manage this mosque'
     );
   }
+
+  return result.rows[0];
 }
 
 async function ensureAdminUser(userId) {
@@ -683,7 +685,7 @@ async function publishBroadcastMessage(request, reply) {
     );
   }
 
-  await ensureMosqueOwnedByUser({
+  const mosque = await ensureMosqueOwnedByUser({
     mosqueId: paramsParsed.data.id,
     userId: request.user.sub
   });
@@ -698,7 +700,104 @@ async function publishBroadcastMessage(request, reply) {
     [paramsParsed.data.id, bodyParsed.data.title, bodyParsed.data.message]
   );
 
-  return reply.code(201).send(successResponse(mapBroadcastRow(result.rows[0])));
+  const broadcast = mapBroadcastRow(result.rows[0]);
+  const notificationEventResult = await pool.query(
+    `INSERT INTO notification_events (
+       event_type,
+       entity_type,
+       entity_id,
+       mosque_id,
+       title,
+       body,
+       payload
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
+     RETURNING id`,
+    [
+      'mosque_broadcast_published',
+      'mosque_broadcast_message',
+      broadcast.id,
+      paramsParsed.data.id,
+      broadcast.title,
+      broadcast.description,
+      JSON.stringify({
+        mosqueId: paramsParsed.data.id,
+        mosqueName: mosque.name,
+        broadcastId: broadcast.id
+      })
+    ]
+  );
+
+  const recipientDevicesResult = await pool.query(
+    `SELECT DISTINCT ON (d.push_token)
+       d.id,
+       d.user_id,
+       d.installation_id,
+       d.platform,
+       d.push_token
+     FROM notification_devices d
+     JOIN mosque_notification_settings s
+       ON s.user_id = d.user_id
+      AND s.mosque_id = $1
+     WHERE d.is_active = TRUE
+       AND d.remote_push_enabled = TRUE
+       AND s.is_enabled = TRUE
+       AND s.title = 'Broadcast Messages'
+     ORDER BY d.push_token, d.last_seen_at DESC`,
+    [paramsParsed.data.id]
+  );
+
+  try {
+    const delivery = await request.server.pushNotificationService.sendMosqueBroadcastNotification({
+      event: {
+        id: notificationEventResult.rows[0].id,
+        mosqueId: paramsParsed.data.id,
+        mosqueName: mosque.name,
+        broadcastId: broadcast.id,
+        title: broadcast.title,
+        body: broadcast.description
+      },
+      devices: recipientDevicesResult.rows.map((row) => ({
+        id: row.id,
+        userId: row.user_id,
+        installationId: row.installation_id,
+        platform: row.platform,
+        pushToken: row.push_token
+      }))
+    });
+
+    if (delivery.invalidDeviceIds.length > 0) {
+      await pool.query(
+        `UPDATE notification_devices
+         SET is_active = FALSE,
+             remote_push_enabled = FALSE,
+             last_seen_at = now()
+         WHERE id = ANY($1::uuid[])`,
+        [delivery.invalidDeviceIds]
+      );
+    }
+
+    request.log.info(
+      {
+        mosqueId: paramsParsed.data.id,
+        broadcastId: broadcast.id,
+        attemptedDevices: delivery.attemptedCount,
+        sentDevices: delivery.sentCount,
+        configured: delivery.configured
+      },
+      'processed mosque broadcast push delivery'
+    );
+  } catch (error) {
+    request.log.warn(
+      {
+        err: error,
+        mosqueId: paramsParsed.data.id,
+        broadcastId: broadcast.id
+      },
+      'mosque broadcast push delivery failed after broadcast persistence'
+    );
+  }
+
+  return reply.code(201).send(successResponse(broadcast));
 }
 
 async function deleteBroadcastMessage(request, reply) {

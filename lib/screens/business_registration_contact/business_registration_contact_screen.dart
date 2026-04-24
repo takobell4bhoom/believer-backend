@@ -466,6 +466,8 @@ class _BusinessRegistrationContactScreenState
               submitEnabled: draft.isSubmitReady,
               isSubmitting: widget.isSubmitting,
               isSavingDraft: widget.isSavingDraft,
+              onBackPressed: widget.onBackPressed ??
+                  () => Navigator.of(context).maybePop(),
               isKeyboardVisible: isKeyboardVisible,
               showSaveDraftAction: widget.showSaveDraftAction,
               submitButtonLabel: widget.submitButtonLabel,

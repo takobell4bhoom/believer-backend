@@ -119,8 +119,6 @@ String _basicDetailsMessage(String? field, String fallback) {
   switch (field) {
     case 'businessName':
       return 'Enter your business name before continuing.';
-    case 'logo':
-      return 'Upload a business logo before submitting your listing.';
     case 'selectedType':
       return 'Choose a business category before submitting your listing.';
     case 'tagline':

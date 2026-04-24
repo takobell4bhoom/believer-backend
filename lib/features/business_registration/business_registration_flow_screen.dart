@@ -193,6 +193,17 @@ class _BusinessRegistrationFlowScreenState
     }
   }
 
+  void _handleContactBack() {
+    if (Navigator.of(context).canPop()) {
+      Navigator.of(context).maybePop();
+      return;
+    }
+    Navigator.of(context).pushReplacementNamed(
+      AppRoutes.businessRegistrationBasicDetails,
+      arguments: widget.routeArgs,
+    );
+  }
+
   String _resolveIntroPrimaryRoute(BusinessRegistrationDraft draft) {
     switch (draft.status) {
       case BusinessRegistrationSubmissionStatus.underReview:
@@ -296,16 +307,7 @@ class _BusinessRegistrationFlowScreenState
           onChanged: ref
               .read(businessRegistrationFlowControllerProvider.notifier)
               .stageContactDraft,
-          onBackPressed: () {
-            if (Navigator.of(context).canPop()) {
-              Navigator.of(context).maybePop();
-              return;
-            }
-            Navigator.of(context).pushReplacementNamed(
-              AppRoutes.businessRegistrationBasicDetails,
-              arguments: widget.routeArgs,
-            );
-          },
+          onBackPressed: _handleContactBack,
           onSaveDraft: _handleContactSaveAndClose,
           onSubmit: _handleContactSubmit,
         );

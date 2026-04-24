@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/app_provider_container.dart';
 import '../data/auth_provider.dart';
+import 'app_notification_service.dart';
 import 'api_client.dart';
 import 'onboarding_preferences_service.dart';
 
@@ -77,6 +78,14 @@ class AuthService {
     final refresh = session?.refreshToken;
 
     if (access != null && refresh != null) {
+      try {
+        await AppNotificationService.instance.unregisterCurrentDevice(
+          bearerToken: access,
+        );
+      } catch (_) {
+        // Best-effort device unregister; logout should still continue.
+      }
+
       try {
         await ApiClient.post(
           '/api/v1/auth/logout',

@@ -5,6 +5,39 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:believer/data/auth_provider.dart';
 
 void main() {
+  test('localhost web uses shared-preferences auth token store', () async {
+    final store = createDefaultAuthTokenStore(
+      isWeb: true,
+      currentUri: Uri.parse('http://localhost:3000'),
+    );
+
+    expect(store, isA<SharedPreferencesAuthTokenStore>());
+  });
+
+  test('non-web keeps secure auth token store', () async {
+    final store = createDefaultAuthTokenStore(
+      isWeb: false,
+      currentUri: Uri.parse('http://localhost:3000'),
+    );
+
+    expect(store, isA<SecureAuthTokenStore>());
+  });
+
+  test('shared-preferences auth token store persists tokens', () async {
+    SharedPreferences.setMockInitialValues({});
+
+    const tokenStore = SharedPreferencesAuthTokenStore();
+    await tokenStore.writeTokens(
+      accessToken: 'prefs-access',
+      refreshToken: 'prefs-refresh',
+    );
+
+    final tokens = await tokenStore.readTokens();
+
+    expect(tokens?.accessToken, 'prefs-access');
+    expect(tokens?.refreshToken, 'prefs-refresh');
+  });
+
   test(
       'hydrates a session from secure token storage and shared prefs user data',
       () async {

@@ -49,6 +49,7 @@ migrate_working_dir/
 /PROJECT_CONTEXT.md
 /PROMPT_*.md
 /API_CONTRACT_SESSION_PROMPT.md
+/config/firebase/mobile.local.json
 
 # Symbolication related
 app.*.symbols

@@ -25,6 +25,16 @@ test('GET /health returns status ok', async () => {
   await app.close();
 });
 
+test('GET /api/v1/health returns status ok', async () => {
+  const app = buildApp();
+  const response = await app.inject({ method: 'GET', url: '/api/v1/health' });
+
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(response.json(), { status: 'ok' });
+
+  await app.close();
+});
+
 test('GET /api/v1/services returns enriched service payloads', async () => {
   const app = buildApp({
     servicesCatalog: {

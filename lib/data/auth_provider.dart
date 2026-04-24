@@ -53,17 +53,18 @@ abstract class AuthTokenStore {
   Future<void> clearTokens();
 }
 
+const _accessTokenStorageKey = 'auth.access_token';
+const _refreshTokenStorageKey = 'auth.refresh_token';
+
 class SecureAuthTokenStore implements AuthTokenStore {
-  static const _accessTokenKey = 'auth.access_token';
-  static const _refreshTokenKey = 'auth.refresh_token';
   static const FlutterSecureStorage _storage = FlutterSecureStorage();
 
   const SecureAuthTokenStore();
 
   @override
   Future<AuthTokens?> readTokens() async {
-    final accessToken = await _storage.read(key: _accessTokenKey);
-    final refreshToken = await _storage.read(key: _refreshTokenKey);
+    final accessToken = await _storage.read(key: _accessTokenStorageKey);
+    final refreshToken = await _storage.read(key: _refreshTokenStorageKey);
     if (accessToken == null ||
         accessToken.isEmpty ||
         refreshToken == null ||
@@ -82,19 +83,96 @@ class SecureAuthTokenStore implements AuthTokenStore {
     required String accessToken,
     required String refreshToken,
   }) async {
-    await _storage.write(key: _accessTokenKey, value: accessToken);
-    await _storage.write(key: _refreshTokenKey, value: refreshToken);
+    await _storage.write(key: _accessTokenStorageKey, value: accessToken);
+    await _storage.write(key: _refreshTokenStorageKey, value: refreshToken);
   }
 
   @override
   Future<void> clearTokens() async {
-    await _storage.delete(key: _accessTokenKey);
-    await _storage.delete(key: _refreshTokenKey);
+    await _storage.delete(key: _accessTokenStorageKey);
+    await _storage.delete(key: _refreshTokenStorageKey);
   }
 }
 
-final authTokenStoreProvider = Provider<AuthTokenStore>((ref) {
+class SharedPreferencesAuthTokenStore implements AuthTokenStore {
+  const SharedPreferencesAuthTokenStore();
+
+  @override
+  Future<AuthTokens?> readTokens() async {
+    final prefs = await SharedPreferences.getInstance();
+    final accessToken = prefs.getString(_accessTokenStorageKey);
+    final refreshToken = prefs.getString(_refreshTokenStorageKey);
+    if (accessToken == null ||
+        accessToken.isEmpty ||
+        refreshToken == null ||
+        refreshToken.isEmpty) {
+      return null;
+    }
+
+    return AuthTokens(
+      accessToken: accessToken,
+      refreshToken: refreshToken,
+    );
+  }
+
+  @override
+  Future<void> writeTokens({
+    required String accessToken,
+    required String refreshToken,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_accessTokenStorageKey, accessToken);
+    await prefs.setString(_refreshTokenStorageKey, refreshToken);
+  }
+
+  @override
+  Future<void> clearTokens() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_accessTokenStorageKey);
+    await prefs.remove(_refreshTokenStorageKey);
+  }
+}
+
+bool shouldUseSharedPrefsTokenStoreForWeb({
+  required bool isWeb,
+  Uri? currentUri,
+}) {
+  if (!isWeb) {
+    return false;
+  }
+
+  final host = (currentUri ?? Uri.base).host.toLowerCase();
+  return host == 'localhost' || host == '127.0.0.1' || host == '::1';
+}
+
+bool shouldUseLocalWebStartupFallback({
+  bool isWeb = kIsWeb,
+  Uri? currentUri,
+}) {
+  return shouldUseSharedPrefsTokenStoreForWeb(
+    isWeb: isWeb,
+    currentUri: currentUri,
+  );
+}
+
+AuthTokenStore createDefaultAuthTokenStore({
+  bool isWeb = kIsWeb,
+  Uri? currentUri,
+}) {
+  // Localhost web runs can stall in flutter_secure_storage; keep local web boot
+  // predictable without changing mobile auth storage.
+  if (shouldUseSharedPrefsTokenStoreForWeb(
+    isWeb: isWeb,
+    currentUri: currentUri,
+  )) {
+    return const SharedPreferencesAuthTokenStore();
+  }
+
   return const SecureAuthTokenStore();
+}
+
+final authTokenStoreProvider = Provider<AuthTokenStore>((ref) {
+  return createDefaultAuthTokenStore();
 });
 
 class AuthNotifier extends AsyncNotifier<AuthSession?> {
@@ -104,9 +182,27 @@ class AuthNotifier extends AsyncNotifier<AuthSession?> {
   static const _userNameKey = 'auth.user.name';
   static const _userEmailKey = 'auth.user.email';
   static const _userRoleKey = 'auth.user.role';
+  static const _localWebStartupTimeout = Duration(seconds: 2);
 
   @override
   Future<AuthSession?> build() async {
+    final loadSession = _buildSession();
+    if (shouldUseLocalWebStartupFallback()) {
+      return loadSession.timeout(
+        _localWebStartupTimeout,
+        onTimeout: () {
+          debugPrint(
+            'Auth bootstrap timed out on localhost web; continuing signed-out.',
+          );
+          return null;
+        },
+      );
+    }
+
+    return loadSession;
+  }
+
+  Future<AuthSession?> _buildSession() async {
     final prefs = await SharedPreferences.getInstance();
     final tokens = await _loadTokens(
       prefs,

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -22,8 +24,7 @@ void main() {
     addTearDown(container.dispose);
 
     await tester.pumpWidget(BelieversLensApp(container: container));
-    await tester.pump(const Duration(seconds: 2));
-    await tester.pumpAndSettle();
+    await _pumpStartup(tester, const Duration(seconds: 2));
 
     expect(find.byType(OnboardingScreen), findsOneWidget);
     expect(find.text('Log In'), findsNothing);
@@ -39,7 +40,7 @@ void main() {
     addTearDown(container.dispose);
 
     await tester.pumpWidget(BelieversLensApp(container: container));
-    await tester.pumpAndSettle();
+    await _pumpStartup(tester);
 
     expect(find.text('Log In'), findsWidgets);
     expect(find.text('Email address'), findsOneWidget);
@@ -57,7 +58,7 @@ void main() {
     addTearDown(container.dispose);
 
     await tester.pumpWidget(BelieversLensApp(container: container));
-    await tester.pumpAndSettle();
+    await _pumpStartup(tester);
 
     expect(find.byType(HomePage1), findsOneWidget);
     expect(find.text('PRAYER TIME'), findsOneWidget);
@@ -82,10 +83,66 @@ void main() {
     addTearDown(container.dispose);
 
     await tester.pumpWidget(BelieversLensApp(container: container));
-    await tester.pumpAndSettle();
+    await _pumpStartup(tester);
 
     expect(find.byType(HomePage1), findsOneWidget);
     expect(find.text('DISCOVER MOSQUES NEAR YOU'), findsOneWidget);
+  });
+
+  testWidgets(
+      'startup auth hydration timeout falls through to login instead of spinning forever',
+      (WidgetTester tester) async {
+    SharedPreferences.setMockInitialValues({
+      'onboarding.completed': true,
+    });
+
+    final container = ProviderContainer(
+      overrides: [
+        authProvider.overrideWith(_PendingAuthNotifier.new),
+        startupHydrationTimeoutProvider.overrideWithValue(
+          const Duration(milliseconds: 10),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      BelieversLensApp(
+        container: container,
+        enableNotificationBootstrap: false,
+      ),
+    );
+    await _pumpStartup(tester, const Duration(milliseconds: 20));
+
+    expect(find.text('Log In'), findsWidgets);
+  });
+
+  testWidgets(
+      'startup onboarding hydration timeout falls through to onboarding instead of spinning forever',
+      (WidgetTester tester) async {
+    SharedPreferences.setMockInitialValues({});
+
+    final container = ProviderContainer(
+      overrides: [
+        onboardingCompletionProvider.overrideWith((ref) async {
+          return Completer<OnboardingPreferencesState>().future;
+        }),
+        startupHydrationTimeoutProvider.overrideWithValue(
+          const Duration(milliseconds: 10),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      BelieversLensApp(
+        container: container,
+        enableNotificationBootstrap: false,
+      ),
+    );
+    await _pumpStartup(tester, const Duration(milliseconds: 20));
+
+    expect(find.byType(OnboardingScreen), findsOneWidget);
   });
 
   testWidgets('signed-out logout return boots into onboarding',
@@ -99,8 +156,7 @@ void main() {
     addTearDown(container.dispose);
 
     await tester.pumpWidget(BelieversLensApp(container: container));
-    await tester.pump(const Duration(seconds: 2));
-    await tester.pumpAndSettle();
+    await _pumpStartup(tester, const Duration(seconds: 2));
 
     expect(find.byType(OnboardingScreen), findsOneWidget);
   });
@@ -238,5 +294,22 @@ class _FakeAuthTokenStore implements AuthTokenStore {
       accessToken: accessToken,
       refreshToken: refreshToken,
     );
+  }
+}
+
+class _PendingAuthNotifier extends AuthNotifier {
+  @override
+  Future<AuthSession?> build() {
+    return Completer<AuthSession?>().future;
+  }
+}
+
+Future<void> _pumpStartup(
+  WidgetTester tester, [
+  Duration duration = const Duration(milliseconds: 100),
+]) async {
+  await tester.pump(duration);
+  for (var index = 0; index < 8; index += 1) {
+    await tester.pump(const Duration(milliseconds: 16));
   }
 }

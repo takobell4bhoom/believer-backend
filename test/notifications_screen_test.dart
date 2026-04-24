@@ -42,40 +42,56 @@ class _FakeMosqueService extends MosqueService {
         isEnabled: true,
       ),
     ],
+    this.notificationMosques = const [
+      NotificationEnabledMosque(
+        id: 'mosque-followed-api-1',
+        name: 'Persisted Notification Mosque',
+      ),
+    ],
+    this.notificationSettingsByMosqueId = const {},
+    this.contentByMosqueId = const {},
+    this.broadcastsByMosqueId = const {},
+    this.detailByMosqueId = const {},
   });
 
   final List<NotificationSetting> notificationSettings;
+  final List<NotificationEnabledMosque> notificationMosques;
+  final Map<String, List<NotificationSetting>> notificationSettingsByMosqueId;
+  final Map<String, MosqueContent> contentByMosqueId;
+  final Map<String, List<BroadcastMessage>> broadcastsByMosqueId;
+  final Map<String, MosqueModel> detailByMosqueId;
 
   @override
   Future<MosqueModel> getMosqueDetail(
     String mosqueId, {
     String? bearerToken,
   }) async {
-    return const MosqueModel(
-      id: 'mosque-followed-api-1',
-      name: 'Persisted Notification Mosque',
-      addressLine: '25 Unity Ave',
-      city: 'Tampa',
-      state: 'FL',
-      country: 'US',
-      latitude: 27.95,
-      longitude: -82.45,
-      imageUrl: '',
-      rating: 4.6,
-      distanceMiles: 1.2,
-      sect: 'Sunni',
-      womenPrayerArea: true,
-      parking: true,
-      wudu: true,
-      facilities: ['parking', 'wudu'],
-      isVerified: true,
-      isBookmarked: false,
-      duhrTime: '01:15 PM',
-      asarTime: '04:45 PM',
-      isOpenNow: true,
-      eventTags: ['Community Family Night'],
-      classTags: ['Quran Study Circle'],
-    );
+    return detailByMosqueId[mosqueId] ??
+        const MosqueModel(
+          id: 'mosque-followed-api-1',
+          name: 'Persisted Notification Mosque',
+          addressLine: '25 Unity Ave',
+          city: 'Tampa',
+          state: 'FL',
+          country: 'US',
+          latitude: 27.95,
+          longitude: -82.45,
+          imageUrl: '',
+          rating: 4.6,
+          distanceMiles: 1.2,
+          sect: 'Sunni',
+          womenPrayerArea: true,
+          parking: true,
+          wudu: true,
+          facilities: ['parking', 'wudu'],
+          isVerified: true,
+          isBookmarked: false,
+          duhrTime: '01:15 PM',
+          asarTime: '04:45 PM',
+          isOpenNow: true,
+          eventTags: ['Community Family Night'],
+          classTags: ['Quran Study Circle'],
+        );
   }
 
   @override
@@ -83,29 +99,31 @@ class _FakeMosqueService extends MosqueService {
     String mosqueId, {
     String? bearerToken,
   }) async {
-    return const MosqueContent(
-      events: [
-        MosqueProgramItem(
-          id: 'event-1',
-          title: 'Community Family Night',
-          schedule: 'Fri, May 9',
-          posterLabel: 'Community',
-          location: 'Main prayer hall',
-          description: 'A published family event from the backend-backed feed.',
-        ),
-      ],
-      classes: [
-        MosqueProgramItem(
-          id: 'class-1',
-          title: 'Quran Study Circle',
-          schedule: 'Every Sat',
-          posterLabel: 'Class',
-          location: 'Library room',
-          description: 'Weekly study circle details.',
-        ),
-      ],
-      connect: [],
-    );
+    return contentByMosqueId[mosqueId] ??
+        const MosqueContent(
+          events: [
+            MosqueProgramItem(
+              id: 'event-1',
+              title: 'Community Family Night',
+              schedule: 'Fri, May 9',
+              posterLabel: 'Community',
+              location: 'Main prayer hall',
+              description:
+                  'A published family event from the backend-backed feed.',
+            ),
+          ],
+          classes: [
+            MosqueProgramItem(
+              id: 'class-1',
+              title: 'Quran Study Circle',
+              schedule: 'Every Sat',
+              posterLabel: 'Class',
+              location: 'Library room',
+              description: 'Weekly study circle details.',
+            ),
+          ],
+          connect: [],
+        );
   }
 
   @override
@@ -113,26 +131,22 @@ class _FakeMosqueService extends MosqueService {
     String mosqueId, {
     String? bearerToken,
   }) async {
-    return const [
-      BroadcastMessage(
-        id: 'broadcast-1',
-        title: 'Parking update',
-        description: 'Please use the south lot for Friday prayers.',
-        date: 'Today',
-      ),
-    ];
+    return broadcastsByMosqueId[mosqueId] ??
+        const [
+          BroadcastMessage(
+            id: 'broadcast-1',
+            title: 'Parking update',
+            description: 'Please use the south lot for Friday prayers.',
+            date: 'Today',
+          ),
+        ];
   }
 
   @override
   Future<List<NotificationEnabledMosque>> getNotificationEnabledMosques({
     String? bearerToken,
   }) async {
-    return const [
-      NotificationEnabledMosque(
-        id: 'mosque-followed-api-1',
-        name: 'Persisted Notification Mosque',
-      ),
-    ];
+    return notificationMosques;
   }
 
   @override
@@ -140,7 +154,7 @@ class _FakeMosqueService extends MosqueService {
     required String mosqueId,
     String? bearerToken,
   }) async {
-    return notificationSettings;
+    return notificationSettingsByMosqueId[mosqueId] ?? notificationSettings;
   }
 }
 
@@ -279,5 +293,184 @@ void main() {
     expect(find.text('EVENTS & CLASSES'), findsNothing);
     expect(find.text('Community Family Night'), findsNothing);
     expect(find.text('Quran Study Circle'), findsNothing);
+  });
+
+  testWidgets(
+      'notifications feed filters each mosque by its own enabled update categories',
+      (tester) async {
+    final container = ProviderContainer(
+      overrides: [
+        authProvider.overrideWith(_LoggedInAuthNotifier.new),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          home: NotificationsScreen(
+            mosqueService: _FakeMosqueService(
+              notificationMosques: const [
+                NotificationEnabledMosque(
+                  id: 'broadcast-mosque',
+                  name: 'Broadcast Mosque',
+                ),
+                NotificationEnabledMosque(
+                  id: 'program-mosque',
+                  name: 'Program Mosque',
+                ),
+              ],
+              notificationSettingsByMosqueId: const {
+                'broadcast-mosque': [
+                  NotificationSetting(
+                    title: 'Broadcast Messages',
+                    description: 'Important community announcements',
+                    isEnabled: true,
+                  ),
+                  NotificationSetting(
+                    title: 'Events & Class Updates',
+                    description: 'Events and class updates',
+                    isEnabled: false,
+                  ),
+                ],
+                'program-mosque': [
+                  NotificationSetting(
+                    title: 'Broadcast Messages',
+                    description: 'Important community announcements',
+                    isEnabled: false,
+                  ),
+                  NotificationSetting(
+                    title: 'Events & Class Updates',
+                    description: 'Events and class updates',
+                    isEnabled: true,
+                  ),
+                ],
+              },
+              detailByMosqueId: const {
+                'broadcast-mosque': MosqueModel(
+                  id: 'broadcast-mosque',
+                  name: 'Broadcast Mosque',
+                  addressLine: '25 Unity Ave',
+                  city: 'Tampa',
+                  state: 'FL',
+                  country: 'US',
+                  latitude: 27.95,
+                  longitude: -82.45,
+                  imageUrl: '',
+                  rating: 4.6,
+                  distanceMiles: 1.2,
+                  sect: 'Sunni',
+                  womenPrayerArea: true,
+                  parking: true,
+                  wudu: true,
+                  facilities: ['parking', 'wudu'],
+                  isVerified: true,
+                  isBookmarked: false,
+                  duhrTime: '01:15 PM',
+                  asarTime: '04:45 PM',
+                  isOpenNow: true,
+                  eventTags: [],
+                  classTags: [],
+                ),
+                'program-mosque': MosqueModel(
+                  id: 'program-mosque',
+                  name: 'Program Mosque',
+                  addressLine: '48 Noor Street',
+                  city: 'Orlando',
+                  state: 'FL',
+                  country: 'US',
+                  latitude: 28.54,
+                  longitude: -81.38,
+                  imageUrl: '',
+                  rating: 4.8,
+                  distanceMiles: 2.4,
+                  sect: 'Sunni',
+                  womenPrayerArea: true,
+                  parking: true,
+                  wudu: true,
+                  facilities: ['parking', 'wudu'],
+                  isVerified: true,
+                  isBookmarked: false,
+                  duhrTime: '01:20 PM',
+                  asarTime: '04:50 PM',
+                  isOpenNow: true,
+                  eventTags: ['Youth Halaqa'],
+                  classTags: ['Weekend Tafsir'],
+                ),
+              },
+              broadcastsByMosqueId: const {
+                'broadcast-mosque': [
+                  BroadcastMessage(
+                    id: 'broadcast-1',
+                    title: 'Parking update',
+                    description: 'Please use the south lot for Friday prayers.',
+                    date: 'Today',
+                  ),
+                ],
+                'program-mosque': [
+                  BroadcastMessage(
+                    id: 'broadcast-2',
+                    title: 'Should be hidden',
+                    description: 'Program-only mosques should not show this.',
+                    date: 'Today',
+                  ),
+                ],
+              },
+              contentByMosqueId: const {
+                'broadcast-mosque': MosqueContent(
+                  events: [
+                    MosqueProgramItem(
+                      id: 'event-hidden',
+                      title: 'Should stay hidden',
+                      schedule: 'Fri, May 9',
+                      posterLabel: 'Community',
+                      location: 'Main prayer hall',
+                      description:
+                          'Broadcast-only mosques should hide programs.',
+                    ),
+                  ],
+                  classes: [],
+                  connect: [],
+                ),
+                'program-mosque': MosqueContent(
+                  events: [
+                    MosqueProgramItem(
+                      id: 'event-1',
+                      title: 'Youth Halaqa',
+                      schedule: 'Fri, May 9',
+                      posterLabel: 'Community',
+                      location: 'Main prayer hall',
+                      description: 'A published event from persisted content.',
+                    ),
+                  ],
+                  classes: [
+                    MosqueProgramItem(
+                      id: 'class-1',
+                      title: 'Weekend Tafsir',
+                      schedule: 'Every Sat',
+                      posterLabel: 'Class',
+                      location: 'Library room',
+                      description: 'A published class from persisted content.',
+                    ),
+                  ],
+                  connect: [],
+                ),
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    expect(find.text('BROADCAST MESSAGES'), findsOneWidget);
+    expect(find.text('EVENTS & CLASSES'), findsOneWidget);
+    expect(find.text('Parking update'), findsOneWidget);
+    expect(find.text('Youth Halaqa'), findsOneWidget);
+    expect(find.text('Weekend Tafsir'), findsOneWidget);
+    expect(find.text('Should be hidden'), findsNothing);
+    expect(find.text('Should stay hidden'), findsNothing);
   });
 }

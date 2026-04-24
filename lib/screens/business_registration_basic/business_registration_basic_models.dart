@@ -95,7 +95,6 @@ class BusinessRegistrationBasicDraft {
 
   bool get isComplete =>
       businessName.trim().isNotEmpty &&
-      logo != null &&
       selectedType != null &&
       tagline.trim().isNotEmpty &&
       description.trim().isNotEmpty;

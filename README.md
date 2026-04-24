@@ -34,6 +34,25 @@ BelieversLens monorepo with a Flutter frontend at the repo root and a Fastify/Po
    - Flutter web: `flutter run -d chrome --web-port 3000`
    - Android emulator: `flutter run -d emulator-5554`
 
+## Notification Foundation Setup
+- Remote mosque pushes now use Firebase Cloud Messaging and local foreground presentation uses `flutter_local_notifications`.
+- Server-side broadcast push requires one of:
+  - `FIREBASE_SERVICE_ACCOUNT_JSON` containing the full Firebase service-account JSON, or
+  - `FCM_PROJECT_ID`, `FCM_CLIENT_EMAIL`, and `FCM_PRIVATE_KEY`
+- Mobile app FCM bootstrap is configured with Dart defines instead of a checked-in `firebase_options.dart` file:
+  - Required Android defines: `FIREBASE_PROJECT_ID`, `FIREBASE_MESSAGING_SENDER_ID`, `FIREBASE_API_KEY`, `FIREBASE_ANDROID_APP_ID`
+  - Required iOS defines: `FIREBASE_PROJECT_ID`, `FIREBASE_MESSAGING_SENDER_ID`, `FIREBASE_API_KEY`, `FIREBASE_IOS_APP_ID`
+  - Optional: `FIREBASE_IOS_BUNDLE_ID`, `FIREBASE_STORAGE_BUCKET`
+- Local developer setup for mobile Firebase:
+  - Fill in `config/firebase/mobile.local.json` using `config/firebase/mobile.local.example.json` as the template.
+  - Run mobile builds through `./scripts/flutter_run_mobile_with_firebase.sh`.
+- Example Android local run:
+  - `./scripts/flutter_run_mobile_with_firebase.sh -d emulator-5554`
+- Example iOS simulator run:
+  - `./scripts/flutter_run_mobile_with_firebase.sh -d ios`
+- If Firebase defines are omitted, the app now keeps remote push disabled gracefully while preserving the existing in-app Notifications tab.
+- Prayer reminders are intentionally not sent from the server in this first pass. The shared local-notification bootstrap is in place for future device-local scheduling from prayer settings.
+
 ## Frontend API Base URL Defaults
 - Flutter web, iOS simulator, and desktop builds default to `http://localhost:4000`.
 - Android local builds default to `http://10.0.2.2:4000`, which reaches the host machine from the Android emulator.

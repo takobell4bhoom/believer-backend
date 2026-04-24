@@ -430,6 +430,7 @@ class BusinessRegistrationSubmitSection extends StatelessWidget {
     required this.submitEnabled,
     required this.isSubmitting,
     required this.isSavingDraft,
+    required this.onBackPressed,
     this.isKeyboardVisible = false,
     this.showSaveDraftAction = true,
     this.submitButtonLabel = 'Submit Listing',
@@ -440,6 +441,7 @@ class BusinessRegistrationSubmitSection extends StatelessWidget {
   final bool submitEnabled;
   final bool isSubmitting;
   final bool isSavingDraft;
+  final VoidCallback onBackPressed;
   final bool isKeyboardVisible;
   final bool showSaveDraftAction;
   final String submitButtonLabel;
@@ -496,40 +498,82 @@ class BusinessRegistrationSubmitSection extends StatelessWidget {
                   : const SizedBox.shrink(),
             ),
             SizedBox(height: showHelperText ? 12 : 0),
-            SizedBox(
-              width: double.infinity,
-              height: 58,
-              child: ElevatedButton(
-                onPressed: submitEnabled && !busy ? onSubmitPressed : null,
-                style: ElevatedButton.styleFrom(
-                  elevation: 0,
-                  backgroundColor: AppColors.accentSoft,
-                  foregroundColor: Colors.white,
-                  disabledBackgroundColor: const Color(0xFF979B98),
-                  disabledForegroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(18),
-                  ),
-                ),
-                child: isSubmitting
-                    ? const SizedBox(
-                        width: 28,
-                        height: 28,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2.6,
-                          valueColor:
-                              AlwaysStoppedAnimation<Color>(Colors.white),
+            Row(
+              children: [
+                Expanded(
+                  child: SizedBox(
+                    height: 58,
+                    child: OutlinedButton(
+                      onPressed: onBackPressed,
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppColors.primaryText,
+                        side: const BorderSide(
+                          color: Color(0xFF94A099),
+                          width: 1.4,
                         ),
-                      )
-                    : Text(
-                        submitButtonLabel,
-                        style: TextStyle(
-                          fontFamily: AppTypography.figtreeFamily,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                        backgroundColor: Colors.white.withValues(alpha: 0.78),
+                      ),
+                      child: const FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          'Back',
+                          maxLines: 1,
+                          style: TextStyle(
+                            fontFamily: AppTypography.figtreeFamily,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                       ),
-              ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: SizedBox(
+                    height: 58,
+                    child: ElevatedButton(
+                      onPressed:
+                          submitEnabled && !busy ? onSubmitPressed : null,
+                      style: ElevatedButton.styleFrom(
+                        elevation: 0,
+                        backgroundColor: AppColors.accentSoft,
+                        foregroundColor: Colors.white,
+                        disabledBackgroundColor: const Color(0xFF979B98),
+                        disabledForegroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                      ),
+                      child: isSubmitting
+                          ? const SizedBox(
+                              width: 28,
+                              height: 28,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.6,
+                                valueColor:
+                                    AlwaysStoppedAnimation<Color>(Colors.white),
+                              ),
+                            )
+                          : FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                submitButtonLabel,
+                                maxLines: 1,
+                                style: const TextStyle(
+                                  fontFamily: AppTypography.figtreeFamily,
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                    ),
+                  ),
+                ),
+              ],
             ),
             AnimatedSwitcher(
               duration: const Duration(milliseconds: 180),

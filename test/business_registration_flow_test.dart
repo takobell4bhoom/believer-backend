@@ -9,6 +9,7 @@ import 'package:believer/features/business_registration/business_registration_fl
 import 'package:believer/features/business_registration/business_registration_flow_screen.dart';
 import 'package:believer/features/business_registration/business_registration_models.dart';
 import 'package:believer/features/business_registration/business_registration_service.dart';
+import 'package:believer/navigation/app_routes.dart';
 import 'package:believer/screens/business_registration_basic/business_registration_basic_models.dart';
 import 'package:believer/screens/business_registration_contact/business_registration_contact_model.dart';
 
@@ -196,6 +197,75 @@ void main() {
     );
   });
 
+  test('flow controller submits a review-ready listing without a logo',
+      () async {
+    final savedBasicDraft = BusinessRegistrationBasicDraft(
+      businessName: 'Noor Catering',
+      selectedType: const BusinessRegistrationSelectedType(
+        groupId: 'food',
+        groupLabel: 'Halal Food',
+        itemId: 'catering',
+        itemLabel: 'Catering Services',
+      ),
+      tagline: 'Trusted halal catering.',
+      description: 'We cater weddings and community events.',
+    );
+    const submittedContactDraft = BusinessRegistrationContactDraft(
+      businessEmail: 'owner@example.com',
+      phone: '+91 9988776655',
+      whatsapp: '+91 9988776655',
+      openingTime: TimeOfDay(hour: 9, minute: 0),
+      closingTime: TimeOfDay(hour: 18, minute: 30),
+      address: '12 Crescent Road',
+      zipCode: '560001',
+      city: 'Bengaluru',
+      onlineOnly: false,
+    );
+
+    final fakeService = _FakeBusinessRegistrationService(
+      latestListing: null,
+      savedListing: _buildListing(
+        status: BusinessRegistrationSubmissionStatus.draft,
+        basicDetails: savedBasicDraft,
+      ),
+      submittedListing: _buildListing(
+        status: BusinessRegistrationSubmissionStatus.underReview,
+        basicDetails: savedBasicDraft,
+        contactDetails: submittedContactDraft,
+      ),
+    );
+
+    final container = ProviderContainer(
+      overrides: [
+        authProvider.overrideWith(_LoggedInAuthNotifier.new),
+        businessRegistrationServiceProvider.overrideWithValue(fakeService),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await container.read(businessRegistrationFlowControllerProvider.future);
+
+    await container
+        .read(businessRegistrationFlowControllerProvider.notifier)
+        .saveBasicDraft(savedBasicDraft);
+    await container
+        .read(businessRegistrationFlowControllerProvider.notifier)
+        .submitForReview(submittedContactDraft);
+
+    expect(fakeService.savedDrafts, hasLength(1));
+    expect(fakeService.savedDrafts.single.basicDetails.logo, isNull);
+    expect(fakeService.submittedDrafts, hasLength(1));
+    expect(fakeService.submittedDrafts.single.basicDetails.logo, isNull);
+    expect(
+      container
+          .read(businessRegistrationFlowControllerProvider)
+          .valueOrNull
+          ?.draft
+          .status,
+      BusinessRegistrationSubmissionStatus.underReview,
+    );
+  });
+
   testWidgets('flow screen lands on live status when backend listing is live',
       (tester) async {
     final fakeService = _FakeBusinessRegistrationService(
@@ -328,5 +398,81 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('Update Listing'), findsOneWidget);
+  });
+
+  testWidgets('bottom back action from contact step returns to basic details',
+      (tester) async {
+    final fakeService = _FakeBusinessRegistrationService(
+      latestListing: _buildListing(
+        status: BusinessRegistrationSubmissionStatus.draft,
+        basicDetails: const BusinessRegistrationBasicDraft(
+          businessName: 'Noor Foods',
+          tagline: 'Halal catering for every gathering',
+          description: 'A long business description for keyboard testing.',
+          selectedType: BusinessRegistrationSelectedType(
+            groupId: 'food',
+            groupLabel: 'Food',
+            itemId: 'catering',
+            itemLabel: 'Catering',
+          ),
+        ),
+        contactDetails: const BusinessRegistrationContactDraft(
+          businessEmail: 'owner@example.com',
+          phone: '+91 9988776655',
+          whatsapp: '+91 9988776655',
+          openingTime: TimeOfDay(hour: 9, minute: 0),
+          closingTime: TimeOfDay(hour: 18, minute: 0),
+          address: '45 Crescent Road',
+          zipCode: '560001',
+          city: 'Bengaluru',
+        ),
+      ),
+    );
+
+    final container = ProviderContainer(
+      overrides: [
+        authProvider.overrideWith(_LoggedInAuthNotifier.new),
+        businessRegistrationServiceProvider.overrideWithValue(fakeService),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    final navigatorKey = GlobalKey<NavigatorState>();
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          navigatorKey: navigatorKey,
+          initialRoute: AppRoutes.businessRegistrationBasicDetails,
+          routes: {
+            AppRoutes.businessRegistrationBasicDetails: (_) =>
+                const BusinessRegistrationFlowScreen(
+                  step: BusinessRegistrationFlowStep.basicDetails,
+                ),
+            AppRoutes.businessRegistrationContactLocation: (_) =>
+                const BusinessRegistrationFlowScreen(
+                  step: BusinessRegistrationFlowStep.contactAndLocation,
+                ),
+          },
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    navigatorKey.currentState!
+        .pushNamed(AppRoutes.businessRegistrationContactLocation);
+    await tester.pumpAndSettle();
+
+    expect(find.widgetWithText(OutlinedButton, 'Back'), findsOneWidget);
+    expect(
+        find.widgetWithText(ElevatedButton, 'Submit Listing'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Back'));
+    await tester.pumpAndSettle();
+
+    expect(find.widgetWithText(ElevatedButton, 'Next'), findsOneWidget);
+    expect(find.widgetWithText(ElevatedButton, 'Submit Listing'), findsNothing);
   });
 }

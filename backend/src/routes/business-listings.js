@@ -146,14 +146,6 @@ const submitRequestSchema = draftRequestSchema.superRefine((value, context) => {
     });
   }
 
-  if (basicDetails.logo == null) {
-    context.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ['basicDetails', 'logo'],
-      message: 'Business logo is required.'
-    });
-  }
-
   if (basicDetails.selectedType == null) {
     context.addIssue({
       code: z.ZodIssueCode.custom,

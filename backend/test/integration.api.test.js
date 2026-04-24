@@ -39,6 +39,8 @@ async function resetData() {
   await pool.query('DELETE FROM support_requests');
   await pool.query('DELETE FROM mosque_suggestions');
   await pool.query('DELETE FROM password_reset_tokens');
+  await pool.query('DELETE FROM notification_events');
+  await pool.query('DELETE FROM notification_devices');
   await pool.query('DELETE FROM mosque_prayer_time_daily_cache');
   await pool.query('DELETE FROM mosque_prayer_time_configs');
   await pool.query('DELETE FROM mosque_page_content');
@@ -121,7 +123,11 @@ async function seedMosquePageContent(mosqueId) {
   );
 }
 
-async function seedMosque({ createdByUserId = null } = {}) {
+async function seedMosque({
+  createdByUserId = null,
+  name = 'Integration Test Mosque',
+  addressLine = 'Test Street'
+} = {}) {
   const result = await pool.query(
     `INSERT INTO mosques (
       name, address_line, city, state, country, postal_code,
@@ -132,8 +138,8 @@ async function seedMosque({ createdByUserId = null } = {}) {
     )
     RETURNING id`,
     [
-      'Integration Test Mosque',
-      'Test Street',
+      name,
+      addressLine,
       'Bengaluru',
       'Karnataka',
       'India',
@@ -459,6 +465,32 @@ function createEmailStub() {
       async sendWelcomeEmail({ to, fullName, role }) {
         sentWelcomeEmails.push({ to, fullName, role });
         return { id: `welcome-${sentWelcomeEmails.length}` };
+      }
+    }
+  };
+}
+
+function createPushNotificationStub() {
+  const sentBroadcasts = [];
+
+  return {
+    sentBroadcasts,
+    service: {
+      isConfigured() {
+        return true;
+      },
+      async sendMosqueBroadcastNotification({ event, devices }) {
+        sentBroadcasts.push({
+          event,
+          devices
+        });
+
+        return {
+          configured: true,
+          attemptedCount: devices.length,
+          sentCount: devices.length,
+          invalidDeviceIds: []
+        };
       }
     }
   };
@@ -2339,7 +2371,7 @@ test('business listing submit validation requires a review-ready payload', async
   assert.equal(response.statusCode, 400);
   assert.equal(response.json().error.code, 'VALIDATION_ERROR');
   assert.ok(
-    response.json().error.details.some(
+    !response.json().error.details.some(
       (issue) => issue.path.join('.') === 'basicDetails.logo'
     )
   );
@@ -2353,6 +2385,37 @@ test('business listing submit validation requires a review-ready payload', async
       (issue) => issue.path.join('.') === 'contactDetails.address'
     )
   );
+
+  await app.close();
+});
+
+test('business listing submit accepts a review-ready payload without a logo', async () => {
+  await resetData();
+
+  const app = buildApp();
+  const session = await signupCommunitySession(
+    app,
+    `business-submit-no-logo-${Date.now()}@example.com`
+  );
+
+  const response = await app.inject({
+    method: 'POST',
+    url: '/api/v1/business-listings/submit',
+    headers: {
+      authorization: `Bearer ${session.accessToken}`,
+      'content-type': 'application/json'
+    },
+    payload: buildBusinessListingPayload({
+      basicDetails: {
+        logo: null
+      }
+    })
+  });
+
+  assert.equal(response.statusCode, 202);
+  assert.equal(response.json().data.listing.status, 'under_review');
+  assert.equal(response.json().data.listing.basicDetails.logo, null);
+  assert.ok(response.json().data.listing.submittedAt);
 
   await app.close();
 });
@@ -4029,6 +4092,288 @@ test('review submission and mosque notification settings flow', async () => {
 
   assert.equal(unsupportedNotificationResponse.statusCode, 400);
   assert.equal(unsupportedNotificationResponse.json().error.code, 'VALIDATION_ERROR');
+
+  await app.close();
+});
+
+test('notification-enabled mosques come from enabled notification settings, not bookmarks', async () => {
+  await resetData();
+
+  const app = buildApp();
+  const signupResponse = await app.inject({
+    method: 'POST',
+    url: '/api/v1/auth/signup',
+    headers: {
+      'content-type': 'application/json'
+    },
+    payload: {
+      fullName: 'Notification User',
+      email: `notification-mosques-${Date.now()}@example.com`,
+      password: 'StrongPass@123'
+    }
+  });
+
+  const { user, tokens } = signupResponse.json().data;
+  const accessToken = tokens.accessToken;
+  const bookmarkedOnlyMosqueId = await seedMosque({
+    name: 'Bookmarked Mosque',
+    addressLine: '11 Test Street'
+  });
+  const broadcastEnabledMosqueId = await seedMosque({
+    name: 'Broadcast Mosque',
+    addressLine: '12 Test Street'
+  });
+  const programsEnabledMosqueId = await seedMosque({
+    name: 'Programs Mosque',
+    addressLine: '13 Test Street'
+  });
+  const disabledMosqueId = await seedMosque({
+    name: 'Disabled Mosque',
+    addressLine: '14 Test Street'
+  });
+
+  await pool.query(
+    `INSERT INTO bookmarks (user_id, mosque_id)
+     VALUES ($1, $2)`,
+    [user.id, bookmarkedOnlyMosqueId]
+  );
+
+  const updateResponse = await app.inject({
+    method: 'PUT',
+    url: '/api/v1/notifications/settings',
+    headers: {
+      authorization: `Bearer ${accessToken}`,
+      'content-type': 'application/json'
+    },
+    payload: {
+      mosqueId: broadcastEnabledMosqueId,
+      settings: [
+        {
+          title: 'Broadcast Messages',
+          description: 'Important community updates',
+          isEnabled: true
+        },
+        {
+          title: 'Events & Class Updates',
+          description: 'Show new events and classes from this mosque',
+          isEnabled: false
+        }
+      ]
+    }
+  });
+
+  assert.equal(updateResponse.statusCode, 200);
+
+  const programsOnlyResponse = await app.inject({
+    method: 'PUT',
+    url: '/api/v1/notifications/settings',
+    headers: {
+      authorization: `Bearer ${accessToken}`,
+      'content-type': 'application/json'
+    },
+    payload: {
+      mosqueId: programsEnabledMosqueId,
+      settings: [
+        {
+          title: 'Broadcast Messages',
+          description: 'Important community updates',
+          isEnabled: false
+        },
+        {
+          title: 'Events & Class Updates',
+          description: 'Show new events and classes from this mosque',
+          isEnabled: true
+        }
+      ]
+    }
+  });
+
+  assert.equal(programsOnlyResponse.statusCode, 200);
+
+  const disabledResponse = await app.inject({
+    method: 'PUT',
+    url: '/api/v1/notifications/settings',
+    headers: {
+      authorization: `Bearer ${accessToken}`,
+      'content-type': 'application/json'
+    },
+    payload: {
+      mosqueId: disabledMosqueId,
+      settings: [
+        {
+          title: 'Broadcast Messages',
+          description: 'Important community updates',
+          isEnabled: false
+        },
+        {
+          title: 'Events & Class Updates',
+          description: 'Show new events and classes from this mosque',
+          isEnabled: false
+        }
+      ]
+    }
+  });
+
+  assert.equal(disabledResponse.statusCode, 200);
+
+  const notificationMosquesResponse = await app.inject({
+    method: 'GET',
+    url: '/api/v1/notifications/mosques',
+    headers: {
+      authorization: `Bearer ${accessToken}`
+    }
+  });
+
+  assert.equal(notificationMosquesResponse.statusCode, 200);
+  assert.deepEqual(
+    notificationMosquesResponse.json().data.items.map((item) => item.id).sort(),
+    [broadcastEnabledMosqueId, programsEnabledMosqueId].sort()
+  );
+  assert.equal(
+    notificationMosquesResponse
+      .json()
+      .data.items.some((item) => item.id === bookmarkedOnlyMosqueId),
+    false
+  );
+  assert.equal(
+    notificationMosquesResponse
+      .json()
+      .data.items.some((item) => item.id === disabledMosqueId),
+    false
+  );
+
+  await app.close();
+});
+
+test('mobile notification device registration and mosque broadcast push flow', async () => {
+  await resetData();
+
+  const pushStub = createPushNotificationStub();
+  const app = buildApp({
+    pushNotificationService: pushStub.service
+  });
+  const ownerSession = await signupAdminSession(
+    app,
+    `push-owner-${Date.now()}@example.com`
+  );
+  const communitySignupResponse = await app.inject({
+    method: 'POST',
+    url: '/api/v1/auth/signup',
+    headers: {
+      'content-type': 'application/json'
+    },
+    payload: {
+      fullName: 'Push User',
+      email: `push-user-${Date.now()}@example.com`,
+      password: 'StrongPass@123'
+    }
+  });
+
+  const communityAccessToken = communitySignupResponse.json().data.tokens.accessToken;
+  const mosqueId = await seedMosque({
+    createdByUserId: ownerSession.userId,
+    name: 'Push Enabled Mosque',
+    addressLine: '45 Noor Street'
+  });
+
+  const registerDeviceResponse = await app.inject({
+    method: 'PUT',
+    url: '/api/v1/notifications/devices',
+    headers: {
+      authorization: `Bearer ${communityAccessToken}`,
+      'content-type': 'application/json'
+    },
+    payload: {
+      installationId: 'install-12345678',
+      pushToken: 'push-token-abcdefghijklmnop',
+      platform: 'android',
+      locale: 'en-IN',
+      appVersion: '1.0.0'
+    }
+  });
+
+  assert.equal(registerDeviceResponse.statusCode, 200);
+  assert.equal(registerDeviceResponse.json().data.device.installationId, 'install-12345678');
+  assert.equal(registerDeviceResponse.json().data.device.platform, 'android');
+  assert.equal(registerDeviceResponse.json().data.device.remotePushEnabled, true);
+
+  const enableBroadcastResponse = await app.inject({
+    method: 'PUT',
+    url: '/api/v1/notifications/settings',
+    headers: {
+      authorization: `Bearer ${communityAccessToken}`,
+      'content-type': 'application/json'
+    },
+    payload: {
+      mosqueId,
+      settings: [
+        {
+          title: 'Broadcast Messages',
+          description: 'Important community updates',
+          isEnabled: true
+        },
+        {
+          title: 'Events & Class Updates',
+          description: 'Show new events and classes from this mosque',
+          isEnabled: false
+        }
+      ]
+    }
+  });
+
+  assert.equal(enableBroadcastResponse.statusCode, 200);
+
+  const publishResponse = await app.inject({
+    method: 'POST',
+    url: `/api/v1/mosques/${mosqueId}/broadcasts`,
+    headers: {
+      authorization: `Bearer ${ownerSession.accessToken}`,
+      'content-type': 'application/json'
+    },
+    payload: {
+      title: 'Tonight after Maghrib',
+      message: 'Community dinner will begin 15 minutes after Maghrib.'
+    }
+  });
+
+  assert.equal(publishResponse.statusCode, 201);
+  assert.equal(pushStub.sentBroadcasts.length, 1);
+  assert.equal(pushStub.sentBroadcasts[0].event.mosqueId, mosqueId);
+  assert.equal(pushStub.sentBroadcasts[0].event.broadcastId, publishResponse.json().data.id);
+  assert.equal(pushStub.sentBroadcasts[0].event.title, 'Tonight after Maghrib');
+  assert.equal(pushStub.sentBroadcasts[0].devices.length, 1);
+  assert.equal(pushStub.sentBroadcasts[0].devices[0].installationId, 'install-12345678');
+  assert.equal(pushStub.sentBroadcasts[0].devices[0].platform, 'android');
+
+  const notificationEventRows = await pool.query(
+    `SELECT event_type, entity_type, mosque_id, title
+     FROM notification_events`
+  );
+  assert.equal(notificationEventRows.rowCount, 1);
+  assert.equal(notificationEventRows.rows[0].event_type, 'mosque_broadcast_published');
+  assert.equal(notificationEventRows.rows[0].entity_type, 'mosque_broadcast_message');
+  assert.equal(notificationEventRows.rows[0].mosque_id, mosqueId);
+  assert.equal(notificationEventRows.rows[0].title, 'Tonight after Maghrib');
+
+  const disableDeviceResponse = await app.inject({
+    method: 'DELETE',
+    url: '/api/v1/notifications/devices/install-12345678',
+    headers: {
+      authorization: `Bearer ${communityAccessToken}`
+    }
+  });
+
+  assert.equal(disableDeviceResponse.statusCode, 200);
+
+  const disabledDeviceRows = await pool.query(
+    `SELECT is_active, remote_push_enabled
+     FROM notification_devices
+     WHERE installation_id = $1`,
+    ['install-12345678']
+  );
+  assert.equal(disabledDeviceRows.rowCount, 1);
+  assert.equal(disabledDeviceRows.rows[0].is_active, false);
+  assert.equal(disabledDeviceRows.rows[0].remote_push_enabled, false);
 
   await app.close();
 });

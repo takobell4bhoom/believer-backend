@@ -75,6 +75,20 @@ const readSettingsQuerySchema = z.object({
   mosqueId: z.string().uuid()
 });
 
+const notificationDevicePlatformSchema = z.enum(['android', 'ios']);
+
+const upsertNotificationDeviceSchema = z.object({
+  installationId: z.string().trim().min(8).max(120),
+  pushToken: z.string().trim().min(16).max(4096),
+  platform: notificationDevicePlatformSchema,
+  locale: z.string().trim().max(24).optional(),
+  appVersion: z.string().trim().max(40).optional()
+});
+
+const deleteNotificationDeviceParamsSchema = z.object({
+  installationId: z.string().trim().min(8).max(120)
+});
+
 async function ensureMosqueExists(mosqueId) {
   const mosqueResult = await pool.query('SELECT id FROM mosques WHERE id = $1', [mosqueId]);
   if (!mosqueResult.rowCount) {
@@ -202,5 +216,83 @@ export async function notificationRoutes(app) {
     } finally {
       client.release();
     }
+  });
+
+  app.put('/api/v1/notifications/devices', { preHandler: [app.authenticate] }, async (request, reply) => {
+    const parsed = upsertNotificationDeviceSchema.safeParse(request.body);
+    if (!parsed.success) {
+      throw new HttpError(400, ERROR_CODES.validation, 'Invalid notification device payload', parsed.error.issues);
+    }
+
+    const payload = parsed.data;
+    const result = await pool.query(
+      `INSERT INTO notification_devices (
+         user_id,
+         installation_id,
+         platform,
+         push_token,
+         locale,
+         app_version,
+         remote_push_enabled,
+         is_active,
+         last_seen_at
+       ) VALUES ($1, $2, $3, $4, $5, $6, TRUE, TRUE, now())
+       ON CONFLICT (user_id, installation_id) DO UPDATE SET
+         platform = EXCLUDED.platform,
+         push_token = EXCLUDED.push_token,
+         locale = EXCLUDED.locale,
+         app_version = EXCLUDED.app_version,
+         remote_push_enabled = TRUE,
+         is_active = TRUE,
+         last_seen_at = now()
+       RETURNING id, installation_id, platform, push_token, locale, app_version, remote_push_enabled, is_active, last_seen_at`,
+      [
+        request.user.sub,
+        payload.installationId,
+        payload.platform,
+        payload.pushToken,
+        payload.locale ?? null,
+        payload.appVersion ?? null
+      ]
+    );
+
+    return reply.send(
+      successResponse({
+        device: {
+          id: result.rows[0].id,
+          installationId: result.rows[0].installation_id,
+          platform: result.rows[0].platform,
+          pushToken: result.rows[0].push_token,
+          locale: result.rows[0].locale,
+          appVersion: result.rows[0].app_version,
+          remotePushEnabled: Boolean(result.rows[0].remote_push_enabled),
+          isActive: Boolean(result.rows[0].is_active),
+          lastSeenAt: result.rows[0].last_seen_at
+        }
+      })
+    );
+  });
+
+  app.delete('/api/v1/notifications/devices/:installationId', { preHandler: [app.authenticate] }, async (request, reply) => {
+    const parsed = deleteNotificationDeviceParamsSchema.safeParse(request.params);
+    if (!parsed.success) {
+      throw new HttpError(400, ERROR_CODES.validation, 'Invalid notification device params', parsed.error.issues);
+    }
+
+    await pool.query(
+      `UPDATE notification_devices
+       SET is_active = FALSE,
+           remote_push_enabled = FALSE,
+           last_seen_at = now()
+       WHERE user_id = $1
+         AND installation_id = $2`,
+      [request.user.sub, parsed.data.installationId]
+    );
+
+    return reply.send(
+      successResponse({
+        success: true
+      })
+    );
   });
 }

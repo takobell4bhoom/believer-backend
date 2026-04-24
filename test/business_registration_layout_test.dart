@@ -11,6 +11,33 @@ import 'package:believer/screens/business_registration_contact/business_registra
     as contact_widgets;
 
 void main() {
+  testWidgets('basic step can proceed without a logo', (tester) async {
+    int nextTapCount = 0;
+
+    await _pumpMobileScenario(
+      tester,
+      child: BusinessRegistrationBasicScreen(
+        initialDraft: _completeBasicDraft().copyWith(clearLogo: true),
+        onNext: (_) async => nextTapCount++,
+        onSaveDraftAndClose: (_) async {},
+      ),
+      keyboardInset: 0,
+    );
+
+    expect(_findSectionLabelText('Logo'), findsOneWidget);
+    expect(_findSectionLabelText('Logo*'), findsNothing);
+
+    final ElevatedButton nextButton = tester.widget(
+      find.widgetWithText(ElevatedButton, 'Next'),
+    );
+    expect(nextButton.onPressed, isNotNull);
+
+    await tester.tap(find.widgetWithText(ElevatedButton, 'Next'));
+    await tester.pumpAndSettle();
+
+    expect(nextTapCount, 1);
+  });
+
   testWidgets('basic step footer collapses when keyboard is open',
       (tester) async {
     int nextTapCount = 0;
@@ -62,6 +89,7 @@ void main() {
       initialValue: _submitReadyContactDraft(),
       onSubmit: (_) async => submitTapCount++,
       onSaveDraft: (_) async {},
+      onBackPressed: () {},
     );
 
     await _pumpMobileScenario(
@@ -75,7 +103,11 @@ void main() {
     );
     final double expandedHeight = tester.getSize(footerContainer).height;
 
+    expect(find.widgetWithText(OutlinedButton, 'Back'), findsOneWidget);
+    expect(
+        find.widgetWithText(ElevatedButton, 'Submit Listing'), findsOneWidget);
     expect(find.text('Save as draft & close'), findsOneWidget);
+    expect(tester.takeException(), isNull);
 
     await _pumpMobileScenario(
       tester,
@@ -87,8 +119,10 @@ void main() {
 
     expect(collapsedHeight, lessThan(expandedHeight));
     expect(find.text('Save as draft & close'), findsNothing);
+    expect(find.widgetWithText(OutlinedButton, 'Back'), findsOneWidget);
     expect(
         find.widgetWithText(ElevatedButton, 'Submit Listing'), findsOneWidget);
+    expect(tester.takeException(), isNull);
 
     await tester.tap(find.widgetWithText(ElevatedButton, 'Submit Listing'));
     await tester.pumpAndSettle();
@@ -151,6 +185,7 @@ void main() {
         ),
         onSubmit: (_) async {},
         onSaveDraft: (_) async {},
+        onBackPressed: () {},
       ),
       keyboardInset: 280,
     );
@@ -208,6 +243,7 @@ void main() {
       child: BusinessRegistrationContactScreen(
         onSubmit: (_) async {},
         onSaveDraft: (_) async {},
+        onBackPressed: () {},
       ),
       keyboardInset: 280,
     );
@@ -252,6 +288,7 @@ void main() {
         initialValue: _submitReadyContactDraft(),
         onSubmit: (_) async {},
         onSaveDraft: (_) async {},
+        onBackPressed: () {},
       ),
       keyboardInset: 280,
     );
@@ -327,5 +364,14 @@ BusinessRegistrationContactDraft _submitReadyContactDraft() {
     address: '45 Crescent Road',
     zipCode: '560001',
     city: 'Bengaluru',
+  );
+}
+
+Finder _findSectionLabelText(String text) {
+  return find.byWidgetPredicate(
+    (widget) =>
+        widget is RichText &&
+        widget.text.toPlainText(includeSemanticsLabels: false) == text,
+    description: 'section label "$text"',
   );
 }

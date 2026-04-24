@@ -27,6 +27,7 @@ import {
 } from './services/servicesService.js';
 import { createLocationLookupService } from './services/location-lookup.js';
 import { createEmailService } from './services/email/index.js';
+import { createPushNotificationService } from './services/push-notifications.js';
 import { ERROR_CODES } from './utils/error-codes.js';
 import { HttpError, errorResponse } from './utils/http.js';
 
@@ -53,6 +54,10 @@ export function buildApp(options = {}) {
   app.decorate(
     'locationLookupService',
     options.locationLookupService ?? createLocationLookupService()
+  );
+  app.decorate(
+    'pushNotificationService',
+    options.pushNotificationService ?? createPushNotificationService()
   );
   app.decorate('servicesCatalog', options.servicesCatalog ?? {
     fetchServices,

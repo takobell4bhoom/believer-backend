@@ -45,7 +45,11 @@ const envSchema = z.object({
   PASSWORD_RESET_URL_BASE: optionalString,
   PASSWORD_RESET_TOKEN_TTL_MINUTES: z.coerce.number().int().positive().max(1440).default(60),
   ALADHAN_BASE_URL: z.string().url().default('https://api.aladhan.com/v1'),
-  ALADHAN_TIMEOUT_MS: z.coerce.number().int().positive().max(30000).default(5000)
+  ALADHAN_TIMEOUT_MS: z.coerce.number().int().positive().max(30000).default(5000),
+  FIREBASE_SERVICE_ACCOUNT_JSON: optionalString,
+  FCM_PROJECT_ID: optionalString,
+  FCM_CLIENT_EMAIL: optionalString,
+  FCM_PRIVATE_KEY: optionalString
 });
 
 const parsed = envSchema.safeParse(process.env);
