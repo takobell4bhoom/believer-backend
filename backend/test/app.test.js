@@ -1,6 +1,48 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildApp } from '../src/app.js';
+import { pool } from '../src/db/pool.js';
+
+function createNearbyRow({
+  id,
+  name,
+  latitude,
+  longitude,
+  addressLine = '15 Mercy Road',
+  city = 'Jacksonville',
+  state = 'FL',
+  country = 'US',
+  isVerified = true
+}) {
+  return {
+    id,
+    name,
+    address_line: addressLine,
+    city,
+    state,
+    country,
+    postal_code: '',
+    latitude,
+    longitude,
+    image_url: '',
+    image_urls: [],
+    sect: 'Community',
+    contact_name: '',
+    contact_phone: '',
+    contact_email: '',
+    website_url: '',
+    duhr_time: '01:15 PM',
+    asr_time: '04:45 PM',
+    facilities: [],
+    is_verified: isVerified,
+    average_rating: 4.6,
+    total_reviews: 3,
+    classes: [],
+    events: [],
+    is_bookmarked: false,
+    can_edit: false
+  };
+}
 
 test('GET / returns api metadata', async () => {
   const app = buildApp();
@@ -264,3 +306,165 @@ test('GET /api/v1/mosques/location-reverse returns a reverse-geocoded label', as
 
   await app.close();
 });
+
+test(
+  'GET /api/v1/mosques/nearby keeps DB mosques, merges Google mosques, and exposes source metadata',
+  { concurrency: false },
+  async () => {
+    const originalQuery = pool.query;
+    pool.query = async () => ({
+      rows: [
+        createNearbyRow({
+          id: 'db-mosque-1',
+          name: 'Northside Community Mosque',
+          latitude: 27.9506,
+          longitude: -82.4572
+        })
+      ]
+    });
+
+    const app = buildApp({
+      locationLookupService: {
+        async discoverNearbyMosques({ latitude, longitude, radiusKm, limit }) {
+          assert.equal(latitude, 27.9506);
+          assert.equal(longitude, -82.4572);
+          assert.equal(radiusKm, 5);
+          assert.equal(limit, 2);
+          return [
+            {
+              id: 'google:place-1',
+              externalPlaceId: 'place-1',
+              name: 'Masjid Al Noor',
+              addressLine: '25 Faith Avenue',
+              city: 'Jacksonville',
+              state: 'FL',
+              country: 'US',
+              postalCode: '',
+              latitude: 27.9521,
+              longitude: -82.4568,
+              imageUrl: '',
+              imageUrls: [],
+              sect: 'Community',
+              contactName: '',
+              contactPhone: '',
+              contactEmail: '',
+              websiteUrl: '',
+              duhrTime: '',
+              asrTime: '',
+              facilities: [],
+              isVerified: false,
+              averageRating: 0,
+              totalReviews: 0,
+              classes: [],
+              events: [],
+              classTags: [],
+              eventTags: [],
+              distanceKm: 0.18,
+              isBookmarked: false,
+              canEdit: false,
+              sourceType: 'google_listed'
+            }
+          ];
+        }
+      }
+    });
+
+    try {
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/v1/mosques/nearby?latitude=27.9506&longitude=-82.4572&radius=5&limit=2'
+      });
+
+      assert.equal(response.statusCode, 200);
+      const body = response.json();
+      assert.equal(body.error, null);
+      assert.deepEqual(
+        body.data.items.map((item) => [item.id, item.sourceType]),
+        [
+          ['db-mosque-1', 'believer_db'],
+          ['google:place-1', 'google_listed']
+        ]
+      );
+    } finally {
+      pool.query = originalQuery;
+      await app.close();
+    }
+  }
+);
+
+test(
+  'GET /api/v1/mosques/nearby prefers the DB-backed mosque when a Google result looks duplicated',
+  { concurrency: false },
+  async () => {
+    const originalQuery = pool.query;
+    pool.query = async () => ({
+      rows: [
+        createNearbyRow({
+          id: 'db-mosque-1',
+          name: 'Masjid Al Noor',
+          latitude: 27.9506,
+          longitude: -82.4572,
+          addressLine: '15 Mercy Road'
+        })
+      ]
+    });
+
+    const app = buildApp({
+      locationLookupService: {
+        async discoverNearbyMosques() {
+          return [
+            {
+              id: 'google:place-duplicate',
+              externalPlaceId: 'place-duplicate',
+              name: 'Masjid Al Noor Mosque',
+              addressLine: '15 Mercy Road',
+              city: 'Jacksonville',
+              state: 'FL',
+              country: 'US',
+              postalCode: '',
+              latitude: 27.9507,
+              longitude: -82.4573,
+              imageUrl: '',
+              imageUrls: [],
+              sect: 'Community',
+              contactName: '',
+              contactPhone: '',
+              contactEmail: '',
+              websiteUrl: '',
+              duhrTime: '',
+              asrTime: '',
+              facilities: [],
+              isVerified: false,
+              averageRating: 0,
+              totalReviews: 0,
+              classes: [],
+              events: [],
+              classTags: [],
+              eventTags: [],
+              distanceKm: 0.02,
+              isBookmarked: false,
+              canEdit: false,
+              sourceType: 'google_listed'
+            }
+          ];
+        }
+      }
+    });
+
+    try {
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/v1/mosques/nearby?latitude=27.9506&longitude=-82.4572&radius=5&limit=5'
+      });
+
+      assert.equal(response.statusCode, 200);
+      const items = response.json().data.items;
+      assert.equal(items.length, 1);
+      assert.equal(items[0].id, 'db-mosque-1');
+      assert.equal(items[0].sourceType, 'believer_db');
+    } finally {
+      pool.query = originalQuery;
+      await app.close();
+    }
+  }
+);

@@ -1,5 +1,10 @@
 import 'mosque_content.dart';
 
+enum MosqueSourceType {
+  believerDb,
+  googleListed,
+}
+
 class MosqueModel {
   final String id;
   final String name;
@@ -34,6 +39,7 @@ class MosqueModel {
   final List<MosqueProgramItem> events;
   final List<String> classTags;
   final List<String> eventTags;
+  final MosqueSourceType sourceType;
 
   const MosqueModel({
     required this.id,
@@ -69,6 +75,7 @@ class MosqueModel {
     this.events = const <MosqueProgramItem>[],
     required this.classTags,
     required this.eventTags,
+    this.sourceType = MosqueSourceType.believerDb,
   });
 
   MosqueModel copyWith({
@@ -105,6 +112,7 @@ class MosqueModel {
     List<MosqueProgramItem>? events,
     List<String>? classTags,
     List<String>? eventTags,
+    MosqueSourceType? sourceType,
   }) {
     return MosqueModel(
       id: id ?? this.id,
@@ -140,6 +148,7 @@ class MosqueModel {
       events: events ?? this.events,
       classTags: classTags ?? this.classTags,
       eventTags: eventTags ?? this.eventTags,
+      sourceType: sourceType ?? this.sourceType,
     );
   }
 
@@ -177,6 +186,10 @@ class MosqueModel {
   bool get hasDhuhrTime => _hasPrayerTime(duhrTime);
 
   bool get hasAsrTime => _hasPrayerTime(asarTime);
+
+  bool get isGoogleListed => sourceType == MosqueSourceType.googleListed;
+
+  bool get supportsBelieverDetail => !isGoogleListed;
 }
 
 MosqueModel fromApi(Map<String, dynamic> row) {
@@ -259,7 +272,19 @@ MosqueModel fromApi(Map<String, dynamic> row) {
     events: events,
     classTags: classTags,
     eventTags: eventTags,
+    sourceType: _readSourceType(row),
   );
+}
+
+MosqueSourceType _readSourceType(Map<String, dynamic> row) {
+  final raw =
+      (row['sourceType'] as String? ?? row['source_type'] as String? ?? '')
+          .trim()
+          .toLowerCase();
+  return switch (raw) {
+    'google_listed' => MosqueSourceType.googleListed,
+    _ => MosqueSourceType.believerDb,
+  };
 }
 
 String _readPrayerTime(

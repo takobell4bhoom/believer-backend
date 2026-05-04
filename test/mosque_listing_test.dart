@@ -6,6 +6,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:believer/data/auth_provider.dart';
 import 'package:believer/data/mosque_provider.dart';
 import 'package:believer/models/mosque_model.dart';
+import 'package:believer/navigation/app_routes.dart';
+import 'package:believer/navigation/mosque_detail_route_args.dart';
 import 'package:believer/screens/mosque_listing.dart';
 import 'package:believer/services/location_preferences_service.dart';
 
@@ -184,6 +186,104 @@ void main() {
         findsOneWidget);
     expect(_TrackingMosqueNotifier.lastLatitude, isNull);
     expect(_TrackingMosqueNotifier.lastLongitude, isNull);
+  });
+
+  testWidgets(
+      'google listed mosque keeps the same card layout and opens the mosque page',
+      (tester) async {
+    const googleMosque = MosqueModel(
+      id: 'google:place-123',
+      name: 'Masjid Al Noor',
+      addressLine: '15 Mercy Road',
+      city: 'Jacksonville',
+      state: 'FL',
+      country: 'US',
+      imageUrl: '',
+      rating: 0,
+      reviewCount: 0,
+      distanceMiles: 0.8,
+      sect: 'Community',
+      womenPrayerArea: false,
+      parking: false,
+      wudu: false,
+      facilities: <String>[],
+      isVerified: false,
+      isBookmarked: false,
+      duhrTime: '',
+      asarTime: '',
+      isOpenNow: false,
+      classTags: <String>[],
+      eventTags: <String>[],
+      sourceType: MosqueSourceType.googleListed,
+    );
+
+    SharedPreferences.setMockInitialValues({
+      'auth.user.id': 'user-1',
+      'auth.user.name': 'Test User',
+      'auth.user.email': 'test@example.com',
+      'auth.user.role': 'community',
+    });
+    _TrackingMosqueNotifier.mosques = const <MosqueModel>[googleMosque];
+    MosqueDetailRouteArgs? pushedArgs;
+
+    final container = ProviderContainer(
+      overrides: [
+        authTokenStoreProvider.overrideWithValue(
+          _FakeAuthTokenStore(
+            tokens: const AuthTokens(
+              accessToken: 'token',
+              refreshToken: 'refresh',
+            ),
+          ),
+        ),
+        mosqueProvider.overrideWith(_TrackingMosqueNotifier.new),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          onGenerateRoute: (settings) {
+            if (settings.name == AppRoutes.mosqueDetail) {
+              pushedArgs = settings.arguments as MosqueDetailRouteArgs?;
+              return MaterialPageRoute<void>(
+                builder: (_) => const Scaffold(
+                  body: Text('detail route opened'),
+                ),
+                settings: settings,
+              );
+            }
+
+            return null;
+          },
+          home: MosqueListing(
+            locationPreferencesService: _FakeLocationPreferencesService(
+              const SavedUserLocation(
+                label: 'Tampa, Florida',
+                latitude: 27.9506,
+                longitude: -82.4572,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    expect(find.text('Masjid Al Noor'), findsOneWidget);
+    expect(find.text('Google listed mosque'), findsOneWidget);
+    expect(find.text('Prayer times not published yet'), findsOneWidget);
+
+    await tester.tap(find.text('Masjid Al Noor'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('detail route opened'), findsOneWidget);
+    expect(pushedArgs, isNotNull);
+    expect(pushedArgs!.mosqueId, googleMosque.id);
+    expect(pushedArgs!.initialMosque, googleMosque);
   });
 }
 

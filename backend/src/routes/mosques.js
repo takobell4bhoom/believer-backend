@@ -17,7 +17,7 @@ import {
   normalizeConnectLinks,
   normalizeContentItems
 } from '../services/mosque-content.js';
-import { findNearbyMosques } from '../services/mosque-nearby.js';
+import { findNearbyMosques, mergeNearbyMosques } from '../services/mosque-nearby.js';
 import {
   clearMosquePrayerTimeCache,
   DEFAULT_PRAYER_ADJUSTMENTS,
@@ -1544,8 +1544,34 @@ export async function mosqueRoutes(app) {
       extraWhere: [publicMosqueVisibilityClause]
     });
 
+    let googleNearby = [];
+    if (typeof app.locationLookupService.discoverNearbyMosques === 'function') {
+      try {
+        googleNearby = await app.locationLookupService.discoverNearbyMosques({
+          latitude: resolved.latitude,
+          longitude: resolved.longitude,
+          radiusKm: resolved.radiusKm,
+          limit: Math.min(query.limit, 20)
+        });
+      } catch (error) {
+        request.log.warn(
+          {
+            reqId: request.id,
+            err: error
+          },
+          'google nearby mosque lookup failed; returning db results only'
+        );
+      }
+    }
+
+    const mergedNearby = mergeNearbyMosques({
+      dbMosques: nearby,
+      googleMosques: googleNearby,
+      limit: query.limit
+    });
+
     return successResponse({
-        items: nearby
+        items: mergedNearby
       });
   });
 

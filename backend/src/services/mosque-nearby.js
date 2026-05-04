@@ -1,6 +1,11 @@
 import { pool } from '../db/pool.js';
 import { boundingBox, haversineKm } from '../utils/geo-distance.js';
 
+export const MOSQUE_SOURCE_TYPES = {
+  believerDb: 'believer_db',
+  googleListed: 'google_listed'
+};
+
 function mapNearbyRow(row, distanceKm) {
   const classes = extractProgramItems(row.classes);
   const events = extractProgramItems(row.events);
@@ -38,7 +43,8 @@ function mapNearbyRow(row, distanceKm) {
     eventTags: extractContentTitles(events),
     distanceKm: Number(distanceKm.toFixed(3)),
     isBookmarked: Boolean(row.is_bookmarked),
-    canEdit: Boolean(row.can_edit)
+    canEdit: Boolean(row.can_edit),
+    sourceType: MOSQUE_SOURCE_TYPES.believerDb
   };
 }
 
@@ -153,5 +159,92 @@ export async function findNearbyMosques({
     })
     .filter((row) => row.distanceKm <= radiusKm)
     .sort((a, b) => a.distanceKm - b.distanceKm)
+    .slice(0, limit);
+}
+
+function normalizeCompareText(value) {
+  return String(value ?? '')
+    .normalize('NFKD')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\b(masjid|mosque|community|center|centre)\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function hasSameName(left, right) {
+  const leftName = normalizeCompareText(left?.name);
+  const rightName = normalizeCompareText(right?.name);
+  if (!leftName || !rightName) {
+    return false;
+  }
+
+  return leftName === rightName || leftName.includes(rightName) || rightName.includes(leftName);
+}
+
+function hasSameAddress(left, right) {
+  const leftAddress = normalizeCompareText(left?.addressLine);
+  const rightAddress = normalizeCompareText(right?.addressLine);
+  if (!leftAddress || !rightAddress) {
+    return false;
+  }
+
+  return leftAddress === rightAddress;
+}
+
+function isLikelySameMosque(left, right) {
+  const leftLatitude = Number(left?.latitude);
+  const leftLongitude = Number(left?.longitude);
+  const rightLatitude = Number(right?.latitude);
+  const rightLongitude = Number(right?.longitude);
+  if (
+    !Number.isFinite(leftLatitude) ||
+    !Number.isFinite(leftLongitude) ||
+    !Number.isFinite(rightLatitude) ||
+    !Number.isFinite(rightLongitude)
+  ) {
+    return false;
+  }
+
+  const distanceKm = haversineKm(leftLatitude, leftLongitude, rightLatitude, rightLongitude);
+  if (distanceKm > 0.25) {
+    return false;
+  }
+
+  return hasSameName(left, right) || hasSameAddress(left, right);
+}
+
+export function mergeNearbyMosques({ dbMosques = [], googleMosques = [], limit = 20 }) {
+  const merged = [...dbMosques];
+  const seenGoogleIds = new Set();
+
+  for (const mosque of googleMosques) {
+    if (!mosque || seenGoogleIds.has(mosque.id)) {
+      continue;
+    }
+    seenGoogleIds.add(mosque.id);
+
+    const duplicateDbMosque = dbMosques.some((dbMosque) => isLikelySameMosque(dbMosque, mosque));
+    if (duplicateDbMosque) {
+      continue;
+    }
+
+    merged.push(mosque);
+  }
+
+  return merged
+    .sort((left, right) => {
+      const distanceDelta = (left.distanceKm ?? Number.POSITIVE_INFINITY) -
+        (right.distanceKm ?? Number.POSITIVE_INFINITY);
+      if (distanceDelta !== 0) {
+        return distanceDelta;
+      }
+
+      if (left.sourceType === right.sourceType) {
+        return 0;
+      }
+
+      return left.sourceType === MOSQUE_SOURCE_TYPES.believerDb ? -1 : 1;
+    })
     .slice(0, limit);
 }

@@ -108,13 +108,16 @@ class _MosquePageState extends ConsumerState<MosquePage> {
   bool _bookmarkBusy = false;
   int _lastHandledContentRefreshTick = 0;
 
+  bool get _isGoogleListedInitialRoute =>
+      widget.args.initialMosque?.isGoogleListed ?? false;
+
   @override
   void initState() {
     super.initState();
     _mosqueService = widget.mosqueService ?? MosqueService();
     _bookmarkService = widget.bookmarkService ?? BookmarkService();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
+      if (mounted && !_isGoogleListedInitialRoute) {
         _loadLiveContent();
       }
     });
@@ -130,7 +133,7 @@ class _MosquePageState extends ConsumerState<MosquePage> {
       _prayerTimings = null;
       _editedMosque = null;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
+        if (mounted && !_isGoogleListedInitialRoute) {
           _loadLiveContent();
         }
       });
@@ -138,7 +141,7 @@ class _MosquePageState extends ConsumerState<MosquePage> {
   }
 
   Future<void> _loadLiveContent() async {
-    if (_isLoadingLiveContent) {
+    if (_isGoogleListedInitialRoute || _isLoadingLiveContent) {
       return;
     }
 
@@ -215,6 +218,10 @@ class _MosquePageState extends ConsumerState<MosquePage> {
     required String mosqueId,
     PrayerTimings? todayPrayerTimings,
   }) async {
+    if (_isGoogleListedInitialRoute) {
+      return const <_WeeklyIqamahDay>[];
+    }
+
     final startDate = DateTime.now();
     final requests = List.generate(7, (index) async {
       final displayDate = DateTime(
@@ -427,7 +434,7 @@ class _MosquePageState extends ConsumerState<MosquePage> {
     if (contentRefreshTick != _lastHandledContentRefreshTick) {
       _lastHandledContentRefreshTick = contentRefreshTick;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
+        if (mounted && !_isGoogleListedInitialRoute) {
           _loadLiveContent();
         }
       });
@@ -503,6 +510,7 @@ class _MosquePageState extends ConsumerState<MosquePage> {
           mosqueContent: _mosqueContent,
           prayerTimings: _prayerTimings,
         );
+        final supportsBelieverFeatures = resolvedMosque.supportsBelieverDetail;
         final shareText = _buildMosqueShareText(resolvedMosque, content);
 
         return _MosquePageScaffold(
@@ -516,10 +524,12 @@ class _MosquePageState extends ConsumerState<MosquePage> {
                   'Could not open share options. Mosque details copied to clipboard.',
             ),
           ),
-          onBookmarkTap: () => _toggleBookmark(resolvedMosque),
+          onBookmarkTap: supportsBelieverFeatures
+              ? () => _toggleBookmark(resolvedMosque)
+              : null,
           isBookmarked: resolvedMosque.isBookmarked,
           bookmarkBusy: _bookmarkBusy,
-          onEditTap: resolvedMosque.canEdit
+          onEditTap: supportsBelieverFeatures && resolvedMosque.canEdit
               ? () => _openAdminEditor(resolvedMosque)
               : null,
           bottomActionBar: _MosquePageActionBar(
@@ -554,15 +564,17 @@ class _MosquePageState extends ConsumerState<MosquePage> {
                     'This mosque does not have a mappable address yet.',
               ),
             ),
-            onNotifyTap: () {
-              Navigator.of(context).pushNamed(
-                AppRoutes.mosqueNotificationSettings,
-                arguments: MosqueNotificationSettingsRouteArgs(
-                  mosqueId: content.mosqueId,
-                  mosqueName: content.mosqueName,
-                ),
-              );
-            },
+            onNotifyTap: supportsBelieverFeatures
+                ? () {
+                    Navigator.of(context).pushNamed(
+                      AppRoutes.mosqueNotificationSettings,
+                      arguments: MosqueNotificationSettingsRouteArgs(
+                        mosqueId: content.mosqueId,
+                        mosqueName: content.mosqueName,
+                      ),
+                    );
+                  }
+                : null,
           ),
           child: SingleChildScrollView(
             padding: const EdgeInsets.only(bottom: 24),
@@ -575,7 +587,9 @@ class _MosquePageState extends ConsumerState<MosquePage> {
                 const SizedBox(height: 12),
                 _IqamahSection(
                   content: content,
-                  onViewWeekTap: () => _openWeeklyIqamahTimings(content),
+                  onViewWeekTap: supportsBelieverFeatures
+                      ? () => _openWeeklyIqamahTimings(content)
+                      : null,
                 ),
                 const SizedBox(height: 12),
                 const _SectionTitle(title: 'FACILITIES'),
@@ -612,7 +626,9 @@ class _MosquePageState extends ConsumerState<MosquePage> {
                 const SizedBox(height: 8),
                 _BroadcastPreview(
                   messages: content.broadcastMessages,
-                  onSeeAll: () => _openBroadcastMessages(content),
+                  onSeeAll: supportsBelieverFeatures
+                      ? () => _openBroadcastMessages(content)
+                      : null,
                 ),
                 const SizedBox(height: 12),
                 const _SectionTitle(title: 'CONNECT'),
@@ -636,31 +652,35 @@ class _MosquePageState extends ConsumerState<MosquePage> {
                           ? 'Leave a review'
                           : 'Write the first review')
                       : 'Login to leave review',
-                  onReadAll: () async {
-                    await Navigator.of(context).pushNamed(
-                      AppRoutes.reviews,
-                      arguments: ReviewScreenRouteArgs(
-                        mosqueId: content.mosqueId,
-                        mosqueName: content.mosqueName,
-                        initialReviews: content.reviews,
-                      ),
-                    );
-                    if (mounted) {
-                      _loadLiveContent();
-                    }
-                  },
-                  onLeaveReview: () async {
-                    await Navigator.of(context).pushNamed(
-                      AppRoutes.leaveReview,
-                      arguments: LeaveReviewRouteArgs(
-                        mosqueId: content.mosqueId,
-                        mosqueName: content.mosqueName,
-                      ),
-                    );
-                    if (mounted) {
-                      _loadLiveContent();
-                    }
-                  },
+                  onReadAll: supportsBelieverFeatures
+                      ? () async {
+                          await Navigator.of(context).pushNamed(
+                            AppRoutes.reviews,
+                            arguments: ReviewScreenRouteArgs(
+                              mosqueId: content.mosqueId,
+                              mosqueName: content.mosqueName,
+                              initialReviews: content.reviews,
+                            ),
+                          );
+                          if (mounted) {
+                            _loadLiveContent();
+                          }
+                        }
+                      : null,
+                  onLeaveReview: supportsBelieverFeatures
+                      ? () async {
+                          await Navigator.of(context).pushNamed(
+                            AppRoutes.leaveReview,
+                            arguments: LeaveReviewRouteArgs(
+                              mosqueId: content.mosqueId,
+                              mosqueName: content.mosqueName,
+                            ),
+                          );
+                          if (mounted) {
+                            _loadLiveContent();
+                          }
+                        }
+                      : null,
                 ),
               ],
             ),
@@ -1271,11 +1291,11 @@ class _GalleryFallback extends StatelessWidget {
 class _IqamahSection extends StatelessWidget {
   const _IqamahSection({
     required this.content,
-    required this.onViewWeekTap,
+    this.onViewWeekTap,
   });
 
   final _MosquePageContent content;
-  final VoidCallback onViewWeekTap;
+  final VoidCallback? onViewWeekTap;
 
   @override
   Widget build(BuildContext context) {
@@ -1431,25 +1451,27 @@ class _IqamahSection extends StatelessWidget {
             if (index < content.iqamahTimings.length - 1)
               const Divider(height: 1, thickness: 1, color: Color(0xFFD0D5D0)),
           ],
-          Align(
-            alignment: Alignment.center,
-            child: TextButton(
-              onPressed: onViewWeekTap,
-              style: TextButton.styleFrom(
-                foregroundColor: AppColors.secondaryText,
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              ),
-              child: const Text(
-                'View this week\'s iqamah timings',
-                style: TextStyle(
-                  fontFamily: 'Figtree',
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
-                  decoration: TextDecoration.underline,
+          if (onViewWeekTap != null)
+            Align(
+              alignment: Alignment.center,
+              child: TextButton(
+                onPressed: onViewWeekTap,
+                style: TextButton.styleFrom(
+                  foregroundColor: AppColors.secondaryText,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                ),
+                child: const Text(
+                  'View this week\'s iqamah timings',
+                  style: TextStyle(
+                    fontFamily: 'Figtree',
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    decoration: TextDecoration.underline,
+                  ),
                 ),
               ),
             ),
-          ),
         ],
       ),
     );
@@ -2040,11 +2062,11 @@ class _PosterCard extends StatelessWidget {
 class _BroadcastPreview extends StatelessWidget {
   const _BroadcastPreview({
     required this.messages,
-    required this.onSeeAll,
+    this.onSeeAll,
   });
 
   final List<BroadcastMessage> messages;
-  final VoidCallback onSeeAll;
+  final VoidCallback? onSeeAll;
 
   @override
   Widget build(BuildContext context) {
@@ -2113,30 +2135,33 @@ class _BroadcastPreview extends StatelessWidget {
               color: AppColors.secondaryText,
             ),
           ),
-          const SizedBox(height: 10),
-          InkWell(
-            onTap: onSeeAll,
-            borderRadius: BorderRadius.circular(999),
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-              decoration: BoxDecoration(
-                color: const Color(0xFFEAEDE9),
-                borderRadius: BorderRadius.circular(999),
-                border: Border.all(color: const Color(0xFFD0D6D1)),
-              ),
-              child: Text(
-                'See all ${messages.length} messages in last 60 days',
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontFamily: 'Figtree',
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.secondaryText,
+          if (onSeeAll != null) ...[
+            const SizedBox(height: 10),
+            InkWell(
+              onTap: onSeeAll,
+              borderRadius: BorderRadius.circular(999),
+              child: Container(
+                width: double.infinity,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEAEDE9),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: const Color(0xFFD0D6D1)),
+                ),
+                child: Text(
+                  'See all ${messages.length} messages in last 60 days',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontFamily: 'Figtree',
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.secondaryText,
+                  ),
                 ),
               ),
             ),
-          ),
+          ],
         ],
       ),
     );
@@ -2243,16 +2268,16 @@ class _ReviewsSection extends StatelessWidget {
     required this.ratingLabel,
     required this.hasReviews,
     required this.reviewActionLabel,
-    required this.onReadAll,
-    required this.onLeaveReview,
+    this.onReadAll,
+    this.onLeaveReview,
   });
 
   final List<Review> reviews;
   final String ratingLabel;
   final bool hasReviews;
   final String reviewActionLabel;
-  final VoidCallback onReadAll;
-  final VoidCallback onLeaveReview;
+  final VoidCallback? onReadAll;
+  final VoidCallback? onLeaveReview;
 
   @override
   Widget build(BuildContext context) {
@@ -2265,22 +2290,27 @@ class _ReviewsSection extends StatelessWidget {
         const SizedBox(height: 6),
         LayoutBuilder(
           builder: (context, constraints) {
-            final reviewCta = TextButton(
-              onPressed: onLeaveReview,
-              style: TextButton.styleFrom(
-                foregroundColor: AppColors.secondaryText,
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-              ),
-              child: Text(
-                reviewActionLabel,
-                style: const TextStyle(
-                  fontFamily: 'Figtree',
-                  fontSize: 10,
-                  fontWeight: FontWeight.w700,
-                  decoration: TextDecoration.underline,
-                ),
-              ),
-            );
+            final reviewCta = onLeaveReview == null
+                ? null
+                : TextButton(
+                    onPressed: onLeaveReview,
+                    style: TextButton.styleFrom(
+                      foregroundColor: AppColors.secondaryText,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 4,
+                      ),
+                    ),
+                    child: Text(
+                      reviewActionLabel,
+                      style: const TextStyle(
+                        fontFamily: 'Figtree',
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        decoration: TextDecoration.underline,
+                      ),
+                    ),
+                  );
             final ratingSummary = Row(
               children: [
                 const Icon(
@@ -2308,8 +2338,10 @@ class _ReviewsSection extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   ratingSummary,
-                  const SizedBox(height: 2),
-                  reviewCta,
+                  if (reviewCta != null) ...[
+                    const SizedBox(height: 2),
+                    reviewCta,
+                  ],
                 ],
               );
             }
@@ -2317,7 +2349,7 @@ class _ReviewsSection extends StatelessWidget {
             return Row(
               children: [
                 Expanded(child: ratingSummary),
-                reviewCta,
+                if (reviewCta != null) reviewCta,
               ],
             );
           },
@@ -2413,28 +2445,29 @@ class _ReviewsSection extends StatelessWidget {
                     ),
                   ),
                 ),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: TextButton(
-                    onPressed: onReadAll,
-                    style: TextButton.styleFrom(
-                      foregroundColor: AppColors.accentSoft,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 0,
-                        vertical: 4,
+                if (onReadAll != null)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton(
+                      onPressed: onReadAll,
+                      style: TextButton.styleFrom(
+                        foregroundColor: AppColors.accentSoft,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 0,
+                          vertical: 4,
+                        ),
                       ),
-                    ),
-                    child: const Text(
-                      'Read all reviews',
-                      style: TextStyle(
-                        fontFamily: 'Figtree',
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        decoration: TextDecoration.underline,
+                      child: const Text(
+                        'Read all reviews',
+                        style: TextStyle(
+                          fontFamily: 'Figtree',
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          decoration: TextDecoration.underline,
+                        ),
                       ),
                     ),
                   ),
-                ),
               ],
             ],
           ),
@@ -2449,13 +2482,13 @@ class _MosquePageActionBar extends StatelessWidget {
     required this.onCallTap,
     required this.onShareTap,
     required this.onDirectionsTap,
-    required this.onNotifyTap,
+    this.onNotifyTap,
   });
 
   final VoidCallback onCallTap;
   final VoidCallback onShareTap;
   final VoidCallback onDirectionsTap;
-  final VoidCallback onNotifyTap;
+  final VoidCallback? onNotifyTap;
 
   @override
   Widget build(BuildContext context) {
@@ -2474,33 +2507,35 @@ class _MosquePageActionBar extends StatelessWidget {
       ),
     ];
 
-    final notificationButton = SizedBox(
-      height: 50,
-      child: ElevatedButton.icon(
-        onPressed: onNotifyTap,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: AppColors.accentSoft,
-          foregroundColor: AppColors.white,
-          elevation: 0,
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-        icon: const Icon(Icons.notifications_active_outlined, size: 18),
-        label: const FittedBox(
-          fit: BoxFit.scaleDown,
-          child: Text(
-            'Enable Notifications',
-            style: TextStyle(
-              fontFamily: 'Figtree',
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
+    final notificationButton = onNotifyTap == null
+        ? null
+        : SizedBox(
+            height: 50,
+            child: ElevatedButton.icon(
+              onPressed: onNotifyTap,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.accentSoft,
+                foregroundColor: AppColors.white,
+                elevation: 0,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              icon: const Icon(Icons.notifications_active_outlined, size: 18),
+              label: const FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  'Enable Notifications',
+                  style: TextStyle(
+                    fontFamily: 'Figtree',
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
             ),
-          ),
-        ),
-      ),
-    );
+          );
 
     return Container(
       decoration: BoxDecoration(
@@ -2528,8 +2563,10 @@ class _MosquePageActionBar extends StatelessWidget {
                     for (final button in iconButtons) button,
                   ],
                 ),
-                const SizedBox(height: 10),
-                SizedBox(width: double.infinity, child: notificationButton),
+                if (notificationButton != null) ...[
+                  const SizedBox(height: 10),
+                  SizedBox(width: double.infinity, child: notificationButton),
+                ],
               ],
             );
           }
@@ -2540,8 +2577,10 @@ class _MosquePageActionBar extends StatelessWidget {
                 iconButtons[index],
                 if (index < iconButtons.length - 1) const SizedBox(width: 8),
               ],
-              const SizedBox(width: 10),
-              Expanded(child: notificationButton),
+              if (notificationButton != null) ...[
+                const SizedBox(width: 10),
+                Expanded(child: notificationButton),
+              ],
             ],
           );
         },
@@ -2644,27 +2683,43 @@ class _MosquePageContent {
     MosqueContent? mosqueContent,
     PrayerTimings? prayerTimings,
   }) {
-    final resolvedReviews = reviewFeed?.items ?? const <Review>[];
-    final resolvedRatingLabel = reviewFeed?.ratingLabel;
-    final resolvedRatingChipLabel = reviewFeed?.ratingChipLabel;
-    final resolvedBroadcastMessages =
-        broadcastMessages ?? const <BroadcastMessage>[];
+    final supportsBelieverFeatures = mosque.supportsBelieverDetail;
+    final resolvedReviews = supportsBelieverFeatures
+        ? reviewFeed?.items ?? const <Review>[]
+        : const <Review>[];
+    final resolvedRatingLabel =
+        supportsBelieverFeatures ? reviewFeed?.ratingLabel : null;
+    final resolvedRatingChipLabel =
+        supportsBelieverFeatures ? reviewFeed?.ratingChipLabel : null;
+    final resolvedBroadcastMessages = supportsBelieverFeatures
+        ? broadcastMessages ?? const <BroadcastMessage>[]
+        : const <BroadcastMessage>[];
     final liveEvents = _eventsFromMosqueContent(mosqueContent);
     final liveClasses = _classesFromMosqueContent(mosqueContent);
     final liveConnectLinks = _connectLinksFromMosqueContent(mosqueContent);
     final liveAbout = mosqueContent?.about;
-    final liveIqamahTimings = _iqamahTimingsFromPrayerTimings(prayerTimings);
-    final prayerHeaderLabel = _prayerHeaderLabel(prayerTimings);
+    final liveIqamahTimings = supportsBelieverFeatures
+        ? _iqamahTimingsFromPrayerTimings(prayerTimings)
+        : null;
+    final prayerHeaderLabel = supportsBelieverFeatures
+        ? _prayerHeaderLabel(prayerTimings)
+        : 'Prayer timings';
     final readableFacilities = mosque.facilities.isEmpty
         ? const <String>['Facilities pending']
         : mosque.facilities
             .map((facility) => _toTitleCase(facility.replaceAll('_', ' ')))
             .toList(growable: false);
-    final prayerSubtitleLabel = _prayerSubtitleLabel(prayerTimings, mosque);
-    final prayerStatusBadge = _prayerStatusBadge(prayerTimings, mosque);
-    final summaryPrayerLabel = _summaryPrayerLabel(prayerTimings, mosque);
-    final hasReviewSummary =
-        reviewFeed?.hasReviews ?? mosque.hasCommunityRating;
+    final prayerSubtitleLabel = supportsBelieverFeatures
+        ? _prayerSubtitleLabel(prayerTimings, mosque)
+        : _prayerSubtitleLabel(null, mosque);
+    final prayerStatusBadge = supportsBelieverFeatures
+        ? _prayerStatusBadge(prayerTimings, mosque)
+        : _prayerStatusBadge(null, mosque);
+    final summaryPrayerLabel = supportsBelieverFeatures
+        ? _summaryPrayerLabel(prayerTimings, mosque)
+        : _summaryPrayerLabel(null, mosque);
+    final hasReviewSummary = supportsBelieverFeatures &&
+        (reviewFeed?.hasReviews ?? mosque.hasCommunityRating);
     final address = [
       mosque.addressLine.trim(),
       [mosque.city, mosque.state]
@@ -2762,11 +2817,12 @@ class _MosquePageContent {
       verificationLabel: mosque.isVerified
           ? 'Verified community listing'
           : 'Community listing',
-      iqamahFocusTitle: prayerTimings?.isAvailable == true
-          ? 'Prayer timings TODAY'
-          : mosque.hasListedPrayerTimes
-              ? 'Listed prayer times'
-              : 'Prayer timings',
+      iqamahFocusTitle:
+          supportsBelieverFeatures && prayerTimings?.isAvailable == true
+              ? 'Prayer timings TODAY'
+              : mosque.hasListedPrayerTimes
+                  ? 'Listed prayer times'
+                  : 'Prayer timings',
       iqamahFocusSubtitle: prayerSubtitleLabel,
       iqamahStatusBadge: prayerStatusBadge,
     );

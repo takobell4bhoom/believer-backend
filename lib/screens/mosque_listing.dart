@@ -137,6 +137,13 @@ class _MosqueListingState extends ConsumerState<MosqueListing> {
     navigator.pushReplacementNamed(AppRoutes.home);
   }
 
+  void _openMosque(MosqueModel mosque) {
+    Navigator.of(context).pushNamed(
+      AppRoutes.mosqueDetail,
+      arguments: MosqueDetailRouteArgs.fromMosque(mosque),
+    );
+  }
+
   int get _activeFilterCount {
     var count = 1; // Figma base state starts with a radius filter applied.
     if (_sortBy != _defaultSortBy) count += 1;
@@ -401,12 +408,7 @@ class _MosqueListingState extends ConsumerState<MosqueListing> {
                     return _MosqueCard(
                       mosque: mosque,
                       showClosestBadge: index == 0,
-                      onTap: () {
-                        Navigator.of(context).pushNamed(
-                          AppRoutes.mosqueDetail,
-                          arguments: MosqueDetailRouteArgs.fromMosque(mosque),
-                        );
-                      },
+                      onTap: () => _openMosque(mosque),
                     );
                   },
                 ),
@@ -988,6 +990,9 @@ String _buildPrayerSummary(MosqueModel mosque) {
 }
 
 String _buildStatusSummary(MosqueModel mosque) {
+  if (mosque.isGoogleListed) {
+    return 'Google listed mosque';
+  }
   if (mosque.isVerified) {
     return 'Verified listing';
   }

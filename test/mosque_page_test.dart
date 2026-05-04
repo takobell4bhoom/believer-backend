@@ -375,6 +375,54 @@ class _SparseMosquePageService extends MosqueService {
   }
 }
 
+class _GoogleListedGuardMosqueService extends MosqueService {
+  int reviewCalls = 0;
+  int broadcastCalls = 0;
+  int contentCalls = 0;
+  int prayerCalls = 0;
+
+  @override
+  Future<ReviewFeed> getMosqueReviews(
+    String mosqueId, {
+    String? bearerToken,
+  }) async {
+    reviewCalls += 1;
+    throw Exception('Google-listed mosques should not load believer reviews.');
+  }
+
+  @override
+  Future<List<BroadcastMessage>> getMosqueBroadcastMessages(
+    String mosqueId, {
+    String? bearerToken,
+  }) async {
+    broadcastCalls += 1;
+    throw Exception(
+      'Google-listed mosques should not load believer broadcasts.',
+    );
+  }
+
+  @override
+  Future<MosqueContent> getMosqueContent(
+    String mosqueId, {
+    String? bearerToken,
+  }) async {
+    contentCalls += 1;
+    throw Exception('Google-listed mosques should not load believer content.');
+  }
+
+  @override
+  Future<PrayerTimings> getPrayerTimings({
+    required String mosqueId,
+    required String date,
+    String? bearerToken,
+  }) async {
+    prayerCalls += 1;
+    throw Exception(
+      'Google-listed mosques should not load believer prayer timings.',
+    );
+  }
+}
+
 void main() {
   testWidgets('mosque page renders verified shell and notification route',
       (tester) async {
@@ -812,5 +860,84 @@ void main() {
     expect(find.text('Prayer timings not published'), findsOneWidget);
     expect(find.text('Amina K.'), findsNothing);
     expect(find.text('Prayer schedule reminder'), findsNothing);
+  });
+
+  testWidgets(
+      'google listed mosque renders safely from initial route data without believer fetches',
+      (tester) async {
+    final mosque = const MosqueModel(
+      id: 'google:place-123',
+      name: 'Masjid Al Noor',
+      addressLine: '15 Mercy Road',
+      city: 'Jacksonville',
+      state: 'FL',
+      country: 'US',
+      imageUrl: '',
+      distanceMiles: 0.8,
+      sect: 'Community',
+      contactPhone: '+1 (407) 555-0101',
+      websiteUrl: 'masjidalnoor.example',
+      womenPrayerArea: false,
+      parking: false,
+      wudu: false,
+      facilities: <String>[],
+      isVerified: false,
+      isBookmarked: false,
+      duhrTime: '',
+      asarTime: '',
+      isOpenNow: false,
+      classTags: <String>[],
+      eventTags: <String>[],
+      sourceType: MosqueSourceType.googleListed,
+      rating: 0,
+    );
+    final service = _GoogleListedGuardMosqueService();
+    final container = ProviderContainer(
+      overrides: [
+        authProvider.overrideWith(_LoggedInAuthNotifier.new),
+        mosqueProvider.overrideWith(_EmptyMosqueNotifier.new),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          home: MosquePage(
+            args: MosqueDetailRouteArgs.fromMosque(mosque),
+            mosqueService: service,
+          ),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    expect(find.text('Masjid Al Noor'), findsWidgets);
+    expect(find.text('15 Mercy Road • Jacksonville, FL'), findsOneWidget);
+    expect(find.text('Prayer timings not published'), findsOneWidget);
+    expect(
+      find.text(
+        'No community reviews have been published for this mosque yet.',
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.text(
+        'No recent broadcast messages have been published for this mosque yet.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Enable Notifications'), findsNothing);
+    expect(find.byIcon(Icons.bookmark_border), findsNothing);
+    expect(find.text('Read all reviews'), findsNothing);
+    expect(find.text('Write the first review'), findsNothing);
+    expect(find.text('View this week\'s iqamah timings'), findsNothing);
+    expect(service.reviewCalls, 0);
+    expect(service.broadcastCalls, 0);
+    expect(service.contentCalls, 0);
+    expect(service.prayerCalls, 0);
+    expect(tester.takeException(), isNull);
   });
 }
