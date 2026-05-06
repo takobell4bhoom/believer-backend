@@ -19,5 +19,6 @@ export const ERROR_CODES = {
   reviewAlreadyExists: 'REVIEW_ALREADY_EXISTS',
   invalidUploadFile: 'INVALID_UPLOAD_FILE',
   uploadTooLarge: 'UPLOAD_TOO_LARGE',
+  nearbyLookupUnavailable: 'NEARBY_LOOKUP_UNAVAILABLE',
   internalServerError: 'INTERNAL_SERVER_ERROR'
 };

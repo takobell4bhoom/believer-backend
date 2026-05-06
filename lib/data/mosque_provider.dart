@@ -1,8 +1,27 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/nearby_radius.dart';
 import '../models/mosque_model.dart';
 import '../services/api_client.dart';
 import 'auth_provider.dart';
+
+Map<String, String> buildNearbyMosquesQuery({
+  required double latitude,
+  required double longitude,
+  double? radiusMiles,
+  double? radiusKm,
+  int limit = 20,
+}) {
+  final normalizedRadiusKm =
+      radiusKm ?? milesToKilometers(radiusMiles ?? defaultNearbyRadiusMiles);
+
+  return {
+    'latitude': '$latitude',
+    'longitude': '$longitude',
+    'radius': '$normalizedRadiusKm',
+    'limit': '$limit',
+  };
+}
 
 class MosqueNotifier extends AsyncNotifier<List<MosqueModel>> {
   @override
@@ -51,7 +70,8 @@ class MosqueNotifier extends AsyncNotifier<List<MosqueModel>> {
   Future<List<MosqueModel>> loadNearby({
     required double latitude,
     required double longitude,
-    double radiusKm = 10,
+    double? radiusMiles,
+    double? radiusKm,
     int limit = 20,
   }) async {
     state = const AsyncLoading();
@@ -60,12 +80,13 @@ class MosqueNotifier extends AsyncNotifier<List<MosqueModel>> {
       final token = _readBearerToken();
       final response = await ApiClient.get(
         '/api/v1/mosques/nearby',
-        query: {
-          'latitude': '$latitude',
-          'longitude': '$longitude',
-          'radius': '$radiusKm',
-          'limit': '$limit',
-        },
+        query: buildNearbyMosquesQuery(
+          latitude: latitude,
+          longitude: longitude,
+          radiusMiles: radiusMiles,
+          radiusKm: radiusKm,
+          limit: limit,
+        ),
         bearerToken: token,
       );
       final data = response['data'] as Map<String, dynamic>? ??

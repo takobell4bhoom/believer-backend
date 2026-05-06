@@ -468,3 +468,267 @@ test(
     }
   }
 );
+
+test(
+  'GET /api/v1/mosques/nearby keeps far Google mosques on large radius requests and dedupes them',
+  { concurrency: false },
+  async () => {
+    const originalQuery = pool.query;
+    pool.query = async () => ({
+      rows: [
+        createNearbyRow({
+          id: 'db-mosque-1',
+          name: 'Northside Community Mosque',
+          latitude: 27.9506,
+          longitude: -82.4572
+        })
+      ]
+    });
+
+    const app = buildApp({
+      locationLookupService: {
+        async discoverNearbyMosques({ radiusKm }) {
+          assert.equal(radiusKm, 160.9344);
+          return [
+            {
+              id: 'google:place-near',
+              externalPlaceId: 'place-near',
+              name: 'Masjid Al Noor',
+              addressLine: '25 Faith Avenue',
+              city: 'Jacksonville',
+              state: 'FL',
+              country: 'US',
+              postalCode: '',
+              latitude: 27.9521,
+              longitude: -82.4568,
+              imageUrl: '',
+              imageUrls: [],
+              sect: 'Community',
+              contactName: '',
+              contactPhone: '',
+              contactEmail: '',
+              websiteUrl: '',
+              duhrTime: '',
+              asrTime: '',
+              facilities: [],
+              isVerified: false,
+              averageRating: 0,
+              totalReviews: 0,
+              classes: [],
+              events: [],
+              classTags: [],
+              eventTags: [],
+              distanceKm: 0.18,
+              isBookmarked: false,
+              canEdit: false,
+              sourceType: 'google_listed'
+            },
+            {
+              id: 'google:place-far',
+              externalPlaceId: 'place-far',
+              name: 'Regional Islamic Center',
+              addressLine: '90 Unity Drive',
+              city: 'Lakeland',
+              state: 'FL',
+              country: 'US',
+              postalCode: '',
+              latitude: 28.721,
+              longitude: -82.4572,
+              imageUrl: '',
+              imageUrls: [],
+              sect: 'Community',
+              contactName: '',
+              contactPhone: '',
+              contactEmail: '',
+              websiteUrl: '',
+              duhrTime: '',
+              asrTime: '',
+              facilities: [],
+              isVerified: false,
+              averageRating: 0,
+              totalReviews: 0,
+              classes: [],
+              events: [],
+              classTags: [],
+              eventTags: [],
+              distanceKm: 85.7,
+              isBookmarked: false,
+              canEdit: false,
+              sourceType: 'google_listed'
+            },
+            {
+              id: 'google:place-far',
+              externalPlaceId: 'place-far',
+              name: 'Regional Islamic Center',
+              addressLine: '90 Unity Drive',
+              city: 'Lakeland',
+              state: 'FL',
+              country: 'US',
+              postalCode: '',
+              latitude: 28.721,
+              longitude: -82.4572,
+              imageUrl: '',
+              imageUrls: [],
+              sect: 'Community',
+              contactName: '',
+              contactPhone: '',
+              contactEmail: '',
+              websiteUrl: '',
+              duhrTime: '',
+              asrTime: '',
+              facilities: [],
+              isVerified: false,
+              averageRating: 0,
+              totalReviews: 0,
+              classes: [],
+              events: [],
+              classTags: [],
+              eventTags: [],
+              distanceKm: 85.7,
+              isBookmarked: false,
+              canEdit: false,
+              sourceType: 'google_listed'
+            }
+          ];
+        }
+      }
+    });
+
+    try {
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/v1/mosques/nearby?latitude=27.9506&longitude=-82.4572&radius=160.9344&limit=10'
+      });
+
+      assert.equal(response.statusCode, 200);
+      assert.deepEqual(
+        response.json().data.items.map((item) => item.id),
+        ['db-mosque-1', 'google:place-near', 'google:place-far']
+      );
+    } finally {
+      pool.query = originalQuery;
+      await app.close();
+    }
+  }
+);
+
+test(
+  'GET /api/v1/mosques/nearby returns DB results when Google nearby lookup fails',
+  { concurrency: false },
+  async () => {
+    const originalQuery = pool.query;
+    pool.query = async () => ({
+      rows: [
+        createNearbyRow({
+          id: 'db-mosque-1',
+          name: 'Northside Community Mosque',
+          latitude: 27.9506,
+          longitude: -82.4572
+        })
+      ]
+    });
+
+    const app = buildApp({
+      locationLookupService: {
+        async discoverNearbyMosques() {
+          throw new Error('google nearby is temporarily unavailable');
+        }
+      }
+    });
+
+    try {
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/v1/mosques/nearby?latitude=27.9506&longitude=-82.4572&radius=80.4672&limit=5'
+      });
+
+      assert.equal(response.statusCode, 200);
+      assert.deepEqual(
+        response.json().data.items.map((item) => item.id),
+        ['db-mosque-1']
+      );
+    } finally {
+      pool.query = originalQuery;
+      await app.close();
+    }
+  }
+);
+
+test(
+  'GET /api/v1/mosques/nearby returns an error instead of a false empty state when all lookup sources fail',
+  { concurrency: false },
+  async () => {
+    const originalQuery = pool.query;
+    pool.query = async () => ({ rows: [] });
+
+    const app = buildApp({
+      locationLookupService: {
+        async discoverNearbyMosques() {
+          throw new Error('google nearby is temporarily unavailable');
+        }
+      }
+    });
+
+    try {
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/v1/mosques/nearby?latitude=27.9506&longitude=-82.4572&radius=80.4672&limit=5'
+      });
+
+      assert.equal(response.statusCode, 502);
+      assert.equal(
+        response.json().error.code,
+        'NEARBY_LOOKUP_UNAVAILABLE'
+      );
+    } finally {
+      pool.query = originalQuery;
+      await app.close();
+    }
+  }
+);
+
+test(
+  'GET /api/v1/mosques/nearby accepts the supported mile-based radius conversions',
+  { concurrency: false },
+  async () => {
+    const originalQuery = pool.query;
+    pool.query = async () => ({ rows: [] });
+    const seenRadiusKm = [];
+
+    const app = buildApp({
+      locationLookupService: {
+        async discoverNearbyMosques({ radiusKm }) {
+          seenRadiusKm.push(radiusKm);
+          return [];
+        }
+      }
+    });
+
+    try {
+      const cases = [
+        { miles: 30, radiusKm: 48.28032 },
+        { miles: 50, radiusKm: 80.4672 },
+        { miles: 100, radiusKm: 160.9344 },
+        { miles: 150, radiusKm: 241.4016 }
+      ];
+
+      for (const { radiusKm } of cases) {
+        const response = await app.inject({
+          method: 'GET',
+          url: `/api/v1/mosques/nearby?latitude=27.9506&longitude=-82.4572&radius=${radiusKm}&limit=5`
+        });
+
+        assert.equal(response.statusCode, 200);
+        assert.deepEqual(response.json().data.items, []);
+      }
+
+      assert.deepEqual(
+        seenRadiusKm,
+        cases.map(({ radiusKm }) => radiusKm)
+      );
+    } finally {
+      pool.query = originalQuery;
+      await app.close();
+    }
+  }
+);

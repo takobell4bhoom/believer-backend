@@ -15,7 +15,8 @@ class MockMosqueNotifier extends MosqueNotifier {
   Future<List<MosqueModel>> loadNearby({
     required double latitude,
     required double longitude,
-    double radiusKm = 10,
+    double? radiusMiles,
+    double? radiusKm,
     int limit = 20,
   }) async {
     final items = MockData.mosques.take(limit).toList(growable: false);

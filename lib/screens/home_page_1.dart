@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/nearby_radius.dart';
 import '../data/auth_provider.dart';
 import '../data/mosque_content_refresh_provider.dart';
 import '../data/mosque_provider.dart';
@@ -152,7 +153,7 @@ class _HomePage1State extends ConsumerState<HomePage1> {
       await ref.read(mosqueProvider.notifier).loadNearby(
             latitude: savedLocation.latitude!,
             longitude: savedLocation.longitude!,
-            radiusKm: 10,
+            radiusMiles: defaultNearbyRadiusMiles,
           );
     } catch (_) {
       // Home keeps rendering its conservative shell even if nearby data fails.

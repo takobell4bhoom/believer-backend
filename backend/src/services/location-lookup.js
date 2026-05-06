@@ -9,6 +9,66 @@ const GOOGLE_PLACE_DETAILS_ENDPOINT =
   'https://maps.googleapis.com/maps/api/place/details/json';
 const GOOGLE_NEARBY_SEARCH_ENDPOINT =
   'https://places.googleapis.com/v1/places:searchNearby';
+export const GOOGLE_SAFE_NEARBY_RADIUS_KM = 50;
+const GOOGLE_NEARBY_BATCH_SIZE = 4;
+
+function offsetCoordinate({ latitude, longitude, northKm = 0, eastKm = 0 }) {
+  const nextLatitude = latitude + (northKm / 111.32);
+  const longitudeDivisor =
+    111.32 * Math.cos((nextLatitude * Math.PI) / 180);
+
+  return {
+    latitude: nextLatitude,
+    longitude: longitude + (eastKm / (longitudeDivisor || 1))
+  };
+}
+
+function buildNearbySearchCenters({
+  latitude,
+  longitude,
+  radiusKm,
+  safeRadiusKm = GOOGLE_SAFE_NEARBY_RADIUS_KM
+}) {
+  if (!Number.isFinite(radiusKm) || radiusKm <= safeRadiusKm) {
+    return [{ latitude, longitude }];
+  }
+
+  const paddedRadiusKm = radiusKm + safeRadiusKm;
+  const horizontalStepKm = safeRadiusKm * Math.sqrt(3);
+  const verticalStepKm = safeRadiusKm * 1.5;
+  const maxRow = Math.ceil(paddedRadiusKm / verticalStepKm);
+  const centers = [];
+
+  for (let row = -maxRow; row <= maxRow; row += 1) {
+    const northKm = row * verticalStepKm;
+    const rowOffsetKm = Math.abs(row) % 2 === 0 ? 0 : horizontalStepKm / 2;
+    const maxColumn = Math.ceil((paddedRadiusKm + rowOffsetKm) / horizontalStepKm);
+
+    for (let column = -maxColumn; column <= maxColumn; column += 1) {
+      const eastKm = (column * horizontalStepKm) + rowOffsetKm;
+      const offsetKm = Math.hypot(northKm, eastKm);
+      if (offsetKm > paddedRadiusKm) {
+        continue;
+      }
+
+      centers.push({
+        ...offsetCoordinate({
+          latitude,
+          longitude,
+          northKm,
+          eastKm
+        }),
+        offsetKm
+      });
+    }
+  }
+
+  centers.sort((left, right) => left.offsetKm - right.offsetKm);
+  return centers.map(({ latitude: centerLatitude, longitude: centerLongitude }) => ({
+    latitude: centerLatitude,
+    longitude: centerLongitude
+  }));
+}
 
 export function createLocationLookupService({
   apiKey = env.GOOGLE_MAPS_API_KEY,
@@ -95,6 +155,124 @@ export function createLocationLookupService({
       latitude,
       longitude,
       provider: 'google_geocoding'
+    };
+  }
+
+  async function searchNearbyMosquesAtCenter({
+    latitude,
+    longitude,
+    radiusKm,
+    limit
+  }) {
+    const payload = await requestGoogleJson(GOOGLE_NEARBY_SEARCH_ENDPOINT, {
+      method: 'POST',
+      headers: {
+        'X-Goog-FieldMask': [
+          'places.id',
+          'places.displayName',
+          'places.formattedAddress',
+          'places.addressComponents',
+          'places.location',
+          'places.websiteUri',
+          'places.internationalPhoneNumber'
+        ].join(',')
+      },
+      body: JSON.stringify({
+        includedTypes: ['mosque'],
+        maxResultCount: limit,
+        rankPreference: 'DISTANCE',
+        locationRestriction: {
+          circle: {
+            center: {
+              latitude,
+              longitude
+            },
+            radius: Math.max(1, Math.round(radiusKm * 1000))
+          }
+        }
+      })
+    });
+
+    return Array.isArray(payload?.places) ? payload.places : [];
+  }
+
+  function mapNearbyPlace(place, originLatitude, originLongitude) {
+    const placeId = typeof place?.id === 'string' ? place.id.trim() : '';
+    const name = typeof place?.displayName?.text === 'string'
+      ? place.displayName.text.trim()
+      : '';
+    const latitudeValue = Number(place?.location?.latitude);
+    const longitudeValue = Number(place?.location?.longitude);
+    if (!placeId || !name || !Number.isFinite(latitudeValue) || !Number.isFinite(longitudeValue)) {
+      return null;
+    }
+
+    const addressComponents = Array.isArray(place?.addressComponents)
+      ? place.addressComponents
+      : [];
+    const city =
+      addressComponents.find((component) =>
+        Array.isArray(component?.types) && component.types.includes('locality')
+      )?.longText ??
+      '';
+    const state =
+      addressComponents.find((component) =>
+        Array.isArray(component?.types) &&
+          component.types.includes('administrative_area_level_1')
+      )?.shortText ??
+      '';
+    const country =
+      addressComponents.find((component) =>
+        Array.isArray(component?.types) && component.types.includes('country')
+      )?.longText ??
+      '';
+
+    return {
+      id: `google:${placeId}`,
+      externalPlaceId: placeId,
+      name,
+      addressLine:
+        typeof place?.formattedAddress === 'string'
+          ? place.formattedAddress.trim()
+          : '',
+      city: typeof city === 'string' ? city.trim() : '',
+      state: typeof state === 'string' ? state.trim() : '',
+      country: typeof country === 'string' ? country.trim() : '',
+      postalCode: '',
+      latitude: latitudeValue,
+      longitude: longitudeValue,
+      imageUrl: '',
+      imageUrls: [],
+      sect: 'Community',
+      contactName: '',
+      contactPhone:
+        typeof place?.internationalPhoneNumber === 'string'
+          ? place.internationalPhoneNumber.trim()
+          : '',
+      contactEmail: '',
+      websiteUrl:
+        typeof place?.websiteUri === 'string' ? place.websiteUri.trim() : '',
+      duhrTime: '',
+      asrTime: '',
+      facilities: [],
+      isVerified: false,
+      averageRating: 0,
+      totalReviews: 0,
+      classes: [],
+      events: [],
+      classTags: [],
+      eventTags: [],
+      distanceKm: Number(
+        haversineKm(
+          originLatitude,
+          originLongitude,
+          latitudeValue,
+          longitudeValue
+        ).toFixed(3)
+      ),
+      isBookmarked: false,
+      canEdit: false,
+      sourceType: MOSQUE_SOURCE_TYPES.googleListed
     };
   }
 
@@ -247,118 +425,66 @@ export function createLocationLookupService({
         return [];
       }
 
-      const payload = await requestGoogleJson(GOOGLE_NEARBY_SEARCH_ENDPOINT, {
-        method: 'POST',
-        headers: {
-          'X-Goog-FieldMask': [
-            'places.id',
-            'places.displayName',
-            'places.formattedAddress',
-            'places.addressComponents',
-            'places.location',
-            'places.websiteUri',
-            'places.internationalPhoneNumber'
-          ].join(',')
-        },
-        body: JSON.stringify({
-          includedTypes: ['mosque'],
-          maxResultCount: normalizedLimit,
-          rankPreference: 'DISTANCE',
-          locationRestriction: {
-            circle: {
-              center: {
-                latitude: normalizedLatitude,
-                longitude: normalizedLongitude
-              },
-              radius: Math.max(1, Math.round(normalizedRadiusKm * 1000))
+      const searchRadiusKm = Math.min(
+        normalizedRadiusKm,
+        GOOGLE_SAFE_NEARBY_RADIUS_KM
+      );
+      const searchCenters = buildNearbySearchCenters({
+        latitude: normalizedLatitude,
+        longitude: normalizedLongitude,
+        radiusKm: normalizedRadiusKm,
+        safeRadiusKm: GOOGLE_SAFE_NEARBY_RADIUS_KM
+      });
+      const mosquesById = new Map();
+      let successfulSearches = 0;
+      let lastFailure = null;
+
+      for (let index = 0; index < searchCenters.length; index += GOOGLE_NEARBY_BATCH_SIZE) {
+        const batch = searchCenters.slice(index, index + GOOGLE_NEARBY_BATCH_SIZE);
+        const settled = await Promise.allSettled(
+          batch.map((center) =>
+            searchNearbyMosquesAtCenter({
+              latitude: center.latitude,
+              longitude: center.longitude,
+              radiusKm: searchRadiusKm,
+              limit: normalizedLimit
+            })
+          )
+        );
+
+        for (const result of settled) {
+          if (result.status !== 'fulfilled') {
+            lastFailure = result.reason;
+            continue;
+          }
+
+          successfulSearches += 1;
+          for (const place of result.value) {
+            const mapped = mapNearbyPlace(
+              place,
+              normalizedLatitude,
+              normalizedLongitude
+            );
+            if (mapped == null) {
+              continue;
+            }
+
+            const existing = mosquesById.get(mapped.id);
+            if (existing == null || mapped.distanceKm < existing.distanceKm) {
+              mosquesById.set(mapped.id, mapped);
             }
           }
-        })
-      });
+        }
+      }
 
-      const places = Array.isArray(payload?.places) ? payload.places : [];
-      return places
-        .map((place) => {
-          const placeId = typeof place?.id === 'string' ? place.id.trim() : '';
-          const name = typeof place?.displayName?.text === 'string'
-            ? place.displayName.text.trim()
-            : '';
-          const latitudeValue = Number(place?.location?.latitude);
-          const longitudeValue = Number(place?.location?.longitude);
-          if (!placeId || !name || !Number.isFinite(latitudeValue) || !Number.isFinite(longitudeValue)) {
-            return null;
-          }
+      if (successfulSearches === 0 && lastFailure != null) {
+        throw lastFailure;
+      }
 
-          const addressComponents = Array.isArray(place?.addressComponents)
-            ? place.addressComponents
-            : [];
-          const city =
-            addressComponents.find((component) =>
-              Array.isArray(component?.types) && component.types.includes('locality')
-            )?.longText ??
-            '';
-          const state =
-            addressComponents.find((component) =>
-              Array.isArray(component?.types) &&
-                component.types.includes('administrative_area_level_1')
-            )?.shortText ??
-            '';
-          const country =
-            addressComponents.find((component) =>
-              Array.isArray(component?.types) && component.types.includes('country')
-            )?.longText ??
-            '';
-
-          return {
-            id: `google:${placeId}`,
-            externalPlaceId: placeId,
-            name,
-            addressLine:
-              typeof place?.formattedAddress === 'string'
-                ? place.formattedAddress.trim()
-                : '',
-            city: typeof city === 'string' ? city.trim() : '',
-            state: typeof state === 'string' ? state.trim() : '',
-            country: typeof country === 'string' ? country.trim() : '',
-            postalCode: '',
-            latitude: latitudeValue,
-            longitude: longitudeValue,
-            imageUrl: '',
-            imageUrls: [],
-            sect: 'Community',
-            contactName: '',
-            contactPhone:
-              typeof place?.internationalPhoneNumber === 'string'
-                ? place.internationalPhoneNumber.trim()
-                : '',
-            contactEmail: '',
-            websiteUrl:
-              typeof place?.websiteUri === 'string' ? place.websiteUri.trim() : '',
-            duhrTime: '',
-            asrTime: '',
-            facilities: [],
-            isVerified: false,
-            averageRating: 0,
-            totalReviews: 0,
-            classes: [],
-            events: [],
-            classTags: [],
-            eventTags: [],
-            distanceKm: Number(
-              haversineKm(
-                normalizedLatitude,
-                normalizedLongitude,
-                latitudeValue,
-                longitudeValue
-              ).toFixed(3)
-            ),
-            isBookmarked: false,
-            canEdit: false,
-            sourceType: MOSQUE_SOURCE_TYPES.googleListed
-          };
-        })
-        .filter(Boolean)
-        .sort((left, right) => left.distanceKm - right.distanceKm);
+      return Array.from(mosquesById.values())
+        .filter((mosque) => mosque.distanceKm <= normalizedRadiusKm)
+        .sort((left, right) => left.distanceKm - right.distanceKm)
+        .slice(0, normalizedLimit);
     }
   };
 }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../core/nearby_radius.dart';
 import '../theme/app_colors.dart';
 
 class SortFilterMosque extends StatelessWidget {
@@ -29,7 +30,6 @@ class _SortFilterMosqueBody extends StatefulWidget {
 
 class _SortFilterMosqueBodyState extends State<_SortFilterMosqueBody> {
   static const _defaultSortBy = 'Nearest Mosque';
-  static const _defaultRadius = 3;
   static const _defaultSect = 'Any';
   static const _defaultAsrTime = 'Any';
   static const _defaultReviewRating = 'Any';
@@ -38,7 +38,6 @@ class _SortFilterMosqueBodyState extends State<_SortFilterMosqueBody> {
     'Nearest Mosque',
     'Earlier Dhuhr',
   ];
-  static const _distanceOptions = <int>[3, 5, 10, 25];
   static const _sectOptions = <String>['Any', 'Sunni', 'Shia'];
   static const _asarOptions = <String>[
     'Any',
@@ -85,7 +84,13 @@ class _SortFilterMosqueBodyState extends State<_SortFilterMosqueBody> {
     final initial = widget.initialFilters;
     _sortBy = initial?['sortBy'] as String? ?? _defaultSortBy;
     final radius = initial?['radius'];
-    _radius = radius is int ? radius : _defaultRadius;
+    _radius = switch (radius) {
+      num value => value.round().clamp(
+            minimumNearbyRadiusMiles.round(),
+            maximumNearbyRadiusMiles.round(),
+          ),
+      _ => defaultNearbyRadiusMiles.round(),
+    };
     _sect = initial?['sect'] as String? ?? _defaultSect;
     _asarTime = initial?['asarTime'] as String? ?? _defaultAsrTime;
     _reviewRating = initial?['reviewRating'] as String? ?? _defaultReviewRating;
@@ -105,7 +110,7 @@ class _SortFilterMosqueBodyState extends State<_SortFilterMosqueBody> {
   void _clearFilters() {
     setState(() {
       _sortBy = _defaultSortBy;
-      _radius = _defaultRadius;
+      _radius = defaultNearbyRadiusMiles.round();
       _sect = _defaultSect;
       _asarTime = _defaultAsrTime;
       _reviewRating = _defaultReviewRating;
@@ -187,7 +192,8 @@ class _SortFilterMosqueBodyState extends State<_SortFilterMosqueBody> {
                           title: 'DISTANCE',
                           child: _DistanceSection(
                             radius: _radius,
-                            options: _distanceOptions,
+                            minRadius: minimumNearbyRadiusMiles.round(),
+                            maxRadius: maximumNearbyRadiusMiles.round(),
                             onChanged: (value) =>
                                 setState(() => _radius = value),
                           ),
@@ -423,19 +429,18 @@ class _Header extends StatelessWidget {
 class _DistanceSection extends StatelessWidget {
   const _DistanceSection({
     required this.radius,
-    required this.options,
+    required this.minRadius,
+    required this.maxRadius,
     required this.onChanged,
   });
 
   final int radius;
-  final List<int> options;
+  final int minRadius;
+  final int maxRadius;
   final ValueChanged<int> onChanged;
 
   @override
   Widget build(BuildContext context) {
-    final min = options.reduce((a, b) => a < b ? a : b).toDouble();
-    final max = options.reduce((a, b) => a > b ? a : b).toDouble();
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -460,17 +465,10 @@ class _DistanceSection extends StatelessWidget {
           ),
           child: Slider(
             value: radius.toDouble(),
-            min: min,
-            max: max,
-            divisions: options.length - 1,
-            onChanged: (value) {
-              final nearest = options.reduce(
-                (best, option) => (option - value).abs() < (best - value).abs()
-                    ? option
-                    : best,
-              );
-              onChanged(nearest);
-            },
+            min: minRadius.toDouble(),
+            max: maxRadius.toDouble(),
+            divisions: maxRadius - minRadius,
+            onChanged: (value) => onChanged(value.round()),
           ),
         ),
         Center(

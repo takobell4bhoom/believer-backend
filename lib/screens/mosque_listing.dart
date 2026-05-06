@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/nearby_radius.dart';
 import '../core/api_error_mapper.dart';
 import '../data/auth_provider.dart';
 import '../data/mosque_provider.dart';
@@ -32,7 +33,6 @@ class MosqueListing extends ConsumerStatefulWidget {
 
 class _MosqueListingState extends ConsumerState<MosqueListing> {
   static const _defaultSortBy = 'Nearest Mosque';
-  static const _defaultRadiusMiles = 3.0;
   static const _defaultSect = 'Any';
   static const _defaultAsrTime = 'Any';
   static const _defaultReviewRating = 'Any';
@@ -42,7 +42,7 @@ class _MosqueListingState extends ConsumerState<MosqueListing> {
 
   String _location = LocationPreferencesService.unsetLocationLabel;
   SavedUserLocation? _savedLocation;
-  double _filterRadiusMiles = _defaultRadiusMiles;
+  double _filterRadiusMiles = defaultNearbyRadiusMiles;
   String _sortBy = _defaultSortBy;
   String _sect = _defaultSect;
   String _asrTime = _defaultAsrTime;
@@ -96,7 +96,7 @@ class _MosqueListingState extends ConsumerState<MosqueListing> {
       await ref.read(mosqueProvider.notifier).loadNearby(
             latitude: savedLocation!.latitude!,
             longitude: savedLocation.longitude!,
-            radiusKm: 10,
+            radiusMiles: _filterRadiusMiles,
           );
     } catch (_) {
       // Error UI is exposed through mosqueProvider.
@@ -125,7 +125,7 @@ class _MosqueListingState extends ConsumerState<MosqueListing> {
       },
     );
     if (!mounted || result is! Map<String, dynamic>) return;
-    _applyFilterPayload(result);
+    await _applyFilterPayload(result);
   }
 
   void _goBack() {
@@ -287,11 +287,14 @@ class _MosqueListingState extends ConsumerState<MosqueListing> {
     return (hour * 60) + minute;
   }
 
-  void _applyFilterPayload(Map<String, dynamic> result) {
+  Future<void> _applyFilterPayload(Map<String, dynamic> result) async {
     final radius = result['radius'];
     final facilities = result['facilities'];
     final classes = result['classes'];
     final events = result['events'];
+    final nextRadiusMiles =
+        radius is num ? radius.toDouble() : defaultNearbyRadiusMiles;
+    final radiusChanged = nextRadiusMiles != _filterRadiusMiles;
 
     setState(() {
       _sortBy = result['sortBy'] as String? ?? _defaultSortBy;
@@ -306,9 +309,12 @@ class _MosqueListingState extends ConsumerState<MosqueListing> {
           classes is List ? classes.whereType<String>().toSet() : <String>{};
       _events =
           events is List ? events.whereType<String>().toSet() : <String>{};
-      _filterRadiusMiles =
-          radius is int ? radius.toDouble() : _defaultRadiusMiles;
+      _filterRadiusMiles = nextRadiusMiles;
     });
+
+    if (radiusChanged && _savedLocation?.hasCoordinates == true) {
+      await _loadMosques();
+    }
   }
 
   @override

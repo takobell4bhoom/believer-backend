@@ -3,18 +3,23 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:believer/core/nearby_radius.dart';
 import 'package:believer/data/auth_provider.dart';
 import 'package:believer/data/mosque_provider.dart';
 import 'package:believer/models/mosque_model.dart';
 import 'package:believer/navigation/app_routes.dart';
 import 'package:believer/navigation/mosque_detail_route_args.dart';
 import 'package:believer/screens/mosque_listing.dart';
+import 'package:believer/screens/sort_filter_mosque.dart';
 import 'package:believer/services/location_preferences_service.dart';
 
 class _TrackingMosqueNotifier extends MosqueNotifier {
   static List<MosqueModel> mosques = const <MosqueModel>[];
   static double? lastLatitude;
   static double? lastLongitude;
+  static double? lastRadiusMiles;
+  static double? lastRadiusKm;
+  static int loadNearbyCallCount = 0;
 
   @override
   Future<List<MosqueModel>> build() async {
@@ -25,11 +30,15 @@ class _TrackingMosqueNotifier extends MosqueNotifier {
   Future<List<MosqueModel>> loadNearby({
     required double latitude,
     required double longitude,
-    double radiusKm = 10,
+    double? radiusMiles,
+    double? radiusKm,
     int limit = 20,
   }) async {
+    loadNearbyCallCount += 1;
     lastLatitude = latitude;
     lastLongitude = longitude;
+    lastRadiusMiles = radiusMiles;
+    lastRadiusKm = radiusKm;
     state = AsyncData(mosques);
     return mosques;
   }
@@ -81,6 +90,9 @@ void main() {
     _TrackingMosqueNotifier.mosques = const <MosqueModel>[mosque];
     _TrackingMosqueNotifier.lastLatitude = null;
     _TrackingMosqueNotifier.lastLongitude = null;
+    _TrackingMosqueNotifier.lastRadiusMiles = null;
+    _TrackingMosqueNotifier.lastRadiusKm = null;
+    _TrackingMosqueNotifier.loadNearbyCallCount = 0;
 
     final container = ProviderContainer(
       overrides: [
@@ -124,6 +136,13 @@ void main() {
     expect(find.text('Northside Community Mosque'), findsOneWidget);
     expect(_TrackingMosqueNotifier.lastLatitude, 27.9506);
     expect(_TrackingMosqueNotifier.lastLongitude, -82.4572);
+    expect(
+      _TrackingMosqueNotifier.lastRadiusMiles,
+      defaultNearbyRadiusMiles,
+    );
+    expect(_TrackingMosqueNotifier.lastRadiusKm, isNull);
+    expect(_TrackingMosqueNotifier.loadNearbyCallCount, 1);
+    expect(find.text('Within 50 miles'), findsOneWidget);
     expect(find.text('Prayer times listed'), findsNothing);
     expect(find.text('Listed: Dhuhr 01:15 PM'), findsOneWidget);
     expect(find.text('Verified listing'), findsOneWidget);
@@ -152,6 +171,9 @@ void main() {
     _TrackingMosqueNotifier.mosques = const <MosqueModel>[];
     _TrackingMosqueNotifier.lastLatitude = null;
     _TrackingMosqueNotifier.lastLongitude = null;
+    _TrackingMosqueNotifier.lastRadiusMiles = null;
+    _TrackingMosqueNotifier.lastRadiusKm = null;
+    _TrackingMosqueNotifier.loadNearbyCallCount = 0;
 
     final container = ProviderContainer(
       overrides: [
@@ -186,6 +208,224 @@ void main() {
         findsOneWidget);
     expect(_TrackingMosqueNotifier.lastLatitude, isNull);
     expect(_TrackingMosqueNotifier.lastLongitude, isNull);
+    expect(_TrackingMosqueNotifier.lastRadiusMiles, isNull);
+    expect(_TrackingMosqueNotifier.lastRadiusKm, isNull);
+  });
+
+  testWidgets(
+      'default 50 mile filter is frontend-only after loading the max nearby radius',
+      (tester) async {
+    const nearbyMosque = MosqueModel(
+      id: 'listing-mosque-near',
+      name: 'Neighborhood Masjid',
+      addressLine: '15 Mercy Road',
+      city: 'Jacksonville',
+      state: 'FL',
+      country: 'US',
+      imageUrl: '',
+      rating: 4.6,
+      reviewCount: 4,
+      distanceMiles: 0.8,
+      sect: 'Community',
+      womenPrayerArea: true,
+      parking: true,
+      wudu: false,
+      facilities: ['women_area', 'parking'],
+      isVerified: true,
+      isBookmarked: false,
+      duhrTime: '01:15 PM',
+      asarTime: '--',
+      isOpenNow: false,
+      classTags: <String>[],
+      eventTags: <String>[],
+    );
+    const midRangeMosque = MosqueModel(
+      id: 'listing-mosque-mid',
+      name: 'County Islamic Center',
+      addressLine: '20 Crescent Avenue',
+      city: 'Jacksonville',
+      state: 'FL',
+      country: 'US',
+      imageUrl: '',
+      rating: 4.5,
+      reviewCount: 3,
+      distanceMiles: 30,
+      sect: 'Community',
+      womenPrayerArea: true,
+      parking: true,
+      wudu: true,
+      facilities: ['women_area', 'parking', 'wudu'],
+      isVerified: true,
+      isBookmarked: false,
+      duhrTime: '01:20 PM',
+      asarTime: '--',
+      isOpenNow: false,
+      classTags: <String>[],
+      eventTags: <String>[],
+    );
+    const edgeMosque = MosqueModel(
+      id: 'listing-mosque-edge',
+      name: 'Fifty Mile Masjid',
+      addressLine: '50 Unity Drive',
+      city: 'Jacksonville',
+      state: 'FL',
+      country: 'US',
+      imageUrl: '',
+      rating: 4.1,
+      reviewCount: 5,
+      distanceMiles: 50,
+      sect: 'Community',
+      womenPrayerArea: true,
+      parking: true,
+      wudu: true,
+      facilities: ['women_area', 'parking', 'wudu'],
+      isVerified: true,
+      isBookmarked: false,
+      duhrTime: '01:22 PM',
+      asarTime: '--',
+      isOpenNow: false,
+      classTags: <String>[],
+      eventTags: <String>[],
+    );
+    const fartherMosque = MosqueModel(
+      id: 'listing-mosque-far',
+      name: 'Regional Islamic Center',
+      addressLine: '25 Faith Avenue',
+      city: 'Jacksonville',
+      state: 'FL',
+      country: 'US',
+      imageUrl: '',
+      rating: 4.2,
+      reviewCount: 2,
+      distanceMiles: 120,
+      sect: 'Community',
+      womenPrayerArea: true,
+      parking: true,
+      wudu: true,
+      facilities: ['women_area', 'parking', 'wudu'],
+      isVerified: true,
+      isBookmarked: false,
+      duhrTime: '01:25 PM',
+      asarTime: '--',
+      isOpenNow: false,
+      classTags: <String>[],
+      eventTags: <String>[],
+    );
+
+    SharedPreferences.setMockInitialValues({
+      'auth.user.id': 'user-1',
+      'auth.user.name': 'Test User',
+      'auth.user.email': 'test@example.com',
+      'auth.user.role': 'community',
+    });
+    _TrackingMosqueNotifier.mosques = const <MosqueModel>[
+      nearbyMosque,
+      midRangeMosque,
+      edgeMosque,
+      fartherMosque,
+    ];
+    _TrackingMosqueNotifier.lastLatitude = null;
+    _TrackingMosqueNotifier.lastLongitude = null;
+    _TrackingMosqueNotifier.lastRadiusMiles = null;
+    _TrackingMosqueNotifier.lastRadiusKm = null;
+    _TrackingMosqueNotifier.loadNearbyCallCount = 0;
+
+    final container = ProviderContainer(
+      overrides: [
+        authTokenStoreProvider.overrideWithValue(
+          _FakeAuthTokenStore(
+            tokens: const AuthTokens(
+              accessToken: 'token',
+              refreshToken: 'refresh',
+            ),
+          ),
+        ),
+        mosqueProvider.overrideWith(_TrackingMosqueNotifier.new),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          onGenerateRoute: (settings) {
+            if (settings.name == AppRoutes.sortFilterMosque) {
+              return MaterialPageRoute<void>(
+                builder: (_) => SortFilterMosque(
+                  initialFilters: settings.arguments as Map<String, dynamic>?,
+                ),
+                settings: settings,
+              );
+            }
+            return null;
+          },
+          home: MosqueListing(
+            locationPreferencesService: _FakeLocationPreferencesService(
+              const SavedUserLocation(
+                label: 'Tampa, Florida',
+                latitude: 27.9506,
+                longitude: -82.4572,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    expect(find.text('Neighborhood Masjid'), findsOneWidget);
+    expect(find.text('3 Mosques'), findsOneWidget);
+    expect(find.text('Within 50 miles'), findsOneWidget);
+    expect(
+      _TrackingMosqueNotifier.lastRadiusMiles,
+      defaultNearbyRadiusMiles,
+    );
+    expect(_TrackingMosqueNotifier.lastRadiusKm, isNull);
+    expect(_TrackingMosqueNotifier.loadNearbyCallCount, 1);
+
+    Future<void> applyRadius(int radiusMiles) async {
+      await tester.tap(find.byTooltip('Open filters'));
+      await tester.pumpAndSettle();
+
+      final slider = tester.widget<Slider>(find.byType(Slider));
+      slider.onChanged?.call(radiusMiles.toDouble());
+      await tester.pumpAndSettle();
+      expect(find.text('$radiusMiles miles'), findsOneWidget);
+
+      await tester.ensureVisible(find.text('Apply'));
+      await tester.tap(find.text('Apply'));
+      await tester.pumpAndSettle();
+    }
+
+    await applyRadius(30);
+    expect(_TrackingMosqueNotifier.lastRadiusMiles, 30);
+    expect(_TrackingMosqueNotifier.loadNearbyCallCount, 2);
+    expect(find.text('Within 30 miles'), findsOneWidget);
+    expect(find.text('2 Mosques'), findsOneWidget);
+    expect(find.text('Neighborhood Masjid'), findsOneWidget);
+
+    await applyRadius(50);
+    expect(_TrackingMosqueNotifier.lastRadiusMiles, 50);
+    expect(_TrackingMosqueNotifier.loadNearbyCallCount, 3);
+    expect(find.text('Within 50 miles'), findsOneWidget);
+    expect(find.text('3 Mosques'), findsOneWidget);
+    expect(find.text('Neighborhood Masjid'), findsOneWidget);
+
+    await applyRadius(100);
+    expect(_TrackingMosqueNotifier.lastRadiusMiles, 100);
+    expect(_TrackingMosqueNotifier.loadNearbyCallCount, 4);
+    expect(find.text('Within 100 miles'), findsOneWidget);
+    expect(find.text('3 Mosques'), findsOneWidget);
+    expect(find.text('Neighborhood Masjid'), findsOneWidget);
+
+    await applyRadius(150);
+    expect(_TrackingMosqueNotifier.lastRadiusMiles, 150);
+    expect(_TrackingMosqueNotifier.loadNearbyCallCount, 5);
+    expect(find.text('Within 150 miles'), findsOneWidget);
+    expect(find.text('4 Mosques'), findsOneWidget);
+    expect(find.text('Neighborhood Masjid'), findsOneWidget);
   });
 
   testWidgets(

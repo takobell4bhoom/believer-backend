@@ -4,6 +4,46 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:believer/screens/sort_filter_mosque.dart';
 
 void main() {
+  testWidgets(
+      'sort filter mosque distance slider defaults to 50 miles and spans 1 to 150',
+      (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: SortFilterMosque(
+          initialFilters: <String, dynamic>{
+            'sortBy': 'Nearest Mosque',
+            'radius': 50,
+            'sect': 'Any',
+            'asarTime': 'Any',
+            'reviewRating': 'Any',
+            'timing': 'All mosques',
+            'facilities': <String>[],
+            'classes': <String>[],
+            'events': <String>[],
+          },
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    final slider = tester.widget<Slider>(find.byType(Slider));
+    expect(slider.min, 1);
+    expect(slider.max, 150);
+    expect(slider.divisions, 149);
+    expect(slider.value, 50);
+    expect(find.text('50 miles'), findsOneWidget);
+
+    slider.onChanged?.call(1);
+    await tester.pumpAndSettle();
+    expect(find.text('1 miles'), findsOneWidget);
+
+    final updatedSlider = tester.widget<Slider>(find.byType(Slider));
+    updatedSlider.onChanged?.call(150);
+    await tester.pumpAndSettle();
+    expect(find.text('150 miles'), findsOneWidget);
+  });
+
   testWidgets('sort filter mosque applies the verified payload structure',
       (tester) async {
     Map<String, dynamic>? result;
@@ -21,7 +61,7 @@ void main() {
                         builder: (_) => const SortFilterMosque(
                           initialFilters: <String, dynamic>{
                             'sortBy': 'Nearest Mosque',
-                            'radius': 3,
+                            'radius': 50,
                             'sect': 'Any',
                             'asarTime': 'Any',
                             'reviewRating': 'Any',
@@ -55,7 +95,7 @@ void main() {
     await tester.tap(find.text('Earlier Dhuhr'));
     await tester.pumpAndSettle();
     final slider = tester.widget<Slider>(find.byType(Slider));
-    slider.onChanged?.call(10);
+    slider.onChanged?.call(77);
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('Sunni'));
     await tester.tap(find.text('Sunni'));
@@ -83,7 +123,7 @@ void main() {
 
     expect(result, isNotNull);
     expect(result!['sortBy'], 'Earlier Dhuhr');
-    expect(result!['radius'], 10);
+    expect(result!['radius'], 77);
     expect(result!['sect'], 'Sunni');
     expect(result!['asarTime'], '5:00 PM or later');
     expect(result!['reviewRating'], '4.0+');

@@ -45,12 +45,12 @@ const listQuerySchema = z.object({
 const nearbyQuerySchema = z.object({
   latitude: z.coerce.number().min(-90).max(90),
   longitude: z.coerce.number().min(-180).max(180),
-  radius: z.coerce.number().positive().max(50).default(5),
+  radius: z.coerce.number().positive().max(241.4016).default(80.4672),
   limit: z.coerce.number().int().positive().max(100).default(20),
   // Backward compatibility aliases
   lat: z.coerce.number().min(-90).max(90).optional(),
   lng: z.coerce.number().min(-180).max(180).optional(),
-  radiusKm: z.coerce.number().positive().max(50).optional()
+  radiusKm: z.coerce.number().positive().max(241.4016).optional()
 });
 
 const locationResolveQuerySchema = z.object({
@@ -1545,6 +1545,7 @@ export async function mosqueRoutes(app) {
     });
 
     let googleNearby = [];
+    let googleLookupFailed = false;
     if (typeof app.locationLookupService.discoverNearbyMosques === 'function') {
       try {
         googleNearby = await app.locationLookupService.discoverNearbyMosques({
@@ -1561,7 +1562,16 @@ export async function mosqueRoutes(app) {
           },
           'google nearby mosque lookup failed; returning db results only'
         );
+        googleLookupFailed = true;
       }
+    }
+
+    if (googleLookupFailed && nearby.length === 0) {
+      throw new HttpError(
+        502,
+        ERROR_CODES.nearbyLookupUnavailable,
+        'Nearby mosque lookup is temporarily unavailable'
+      );
     }
 
     const mergedNearby = mergeNearbyMosques({

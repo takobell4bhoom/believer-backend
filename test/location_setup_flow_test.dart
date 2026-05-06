@@ -95,7 +95,8 @@ class _TrackingMosqueNotifier extends MosqueNotifier {
   Future<List<MosqueModel>> loadNearby({
     required double latitude,
     required double longitude,
-    double radiusKm = 10,
+    double? radiusMiles,
+    double? radiusKm,
     int limit = 20,
   }) async {
     lastLatitude = latitude;
@@ -611,7 +612,8 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('location-option-0')));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.byKey(const Key('location-setup-continue')));
+    await tester
+        .ensureVisible(find.byKey(const Key('location-setup-continue')));
     await tester.tap(find.byKey(const Key('location-setup-continue')));
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.byKey(const Key('location-map-confirm')));

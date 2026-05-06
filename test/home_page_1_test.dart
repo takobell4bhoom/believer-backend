@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:believer/core/nearby_radius.dart';
 import 'package:believer/data/auth_provider.dart';
 import 'package:believer/data/mosque_content_refresh_provider.dart';
 import 'package:believer/data/mock_provider.dart';
@@ -278,7 +279,8 @@ class _CoverImageMosqueNotifier extends MosqueNotifier {
   Future<List<MosqueModel>> loadNearby({
     required double latitude,
     required double longitude,
-    double radiusKm = 10,
+    double? radiusMiles,
+    double? radiusKm,
     int limit = 20,
   }) async {
     state = AsyncData(mosques);
@@ -290,6 +292,8 @@ class _TrackingMosqueNotifier extends MosqueNotifier {
   static List<MosqueModel> mosques = const <MosqueModel>[];
   static double? lastLatitude;
   static double? lastLongitude;
+  static double? lastRadiusMiles;
+  static double? lastRadiusKm;
 
   @override
   Future<List<MosqueModel>> build() async {
@@ -300,11 +304,14 @@ class _TrackingMosqueNotifier extends MosqueNotifier {
   Future<List<MosqueModel>> loadNearby({
     required double latitude,
     required double longitude,
-    double radiusKm = 10,
+    double? radiusMiles,
+    double? radiusKm,
     int limit = 20,
   }) async {
     lastLatitude = latitude;
     lastLongitude = longitude;
+    lastRadiusMiles = radiusMiles;
+    lastRadiusKm = radiusKm;
     state = AsyncData(mosques);
     return mosques;
   }
@@ -1256,6 +1263,8 @@ void main() {
     ];
     _TrackingMosqueNotifier.lastLatitude = null;
     _TrackingMosqueNotifier.lastLongitude = null;
+    _TrackingMosqueNotifier.lastRadiusMiles = null;
+    _TrackingMosqueNotifier.lastRadiusKm = null;
     final service = _FakeMosqueService(
       nowProvider: () => fixedNow,
     );
@@ -1286,6 +1295,11 @@ void main() {
 
     expect(_TrackingMosqueNotifier.lastLatitude, 27.9506);
     expect(_TrackingMosqueNotifier.lastLongitude, -82.4572);
+    expect(
+      _TrackingMosqueNotifier.lastRadiusMiles,
+      defaultNearbyRadiusMiles,
+    );
+    expect(_TrackingMosqueNotifier.lastRadiusKm, isNull);
     expect(service.prayerTimeRequests, isEmpty);
     expect(locationTimingsService.requests, isNotEmpty);
     expect(locationTimingsService.requests.single['latitude'], 27.9506);
