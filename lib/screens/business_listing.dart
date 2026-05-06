@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/auth_provider.dart';
 import '../models/service.dart';
+import '../navigation/app_startup.dart';
 import '../navigation/app_routes.dart';
 import '../screens/business_leave_review.dart';
 import '../screens/business_review_screen.dart';
@@ -46,6 +47,31 @@ class _BusinessListingState extends ConsumerState<BusinessListing> {
     final result = await future;
     if (!mounted) return;
     _showFeedback(result.message);
+  }
+
+  Future<void> _openLeaveReview({
+    required String businessListingId,
+    required String businessName,
+  }) async {
+    if (ref.read(authProvider).valueOrNull == null) {
+      await promptForLogin(
+        context,
+        message: 'Log in to leave a review.',
+      );
+      return;
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    Navigator.of(context).pushNamed(
+      AppRoutes.leaveReview,
+      arguments: BusinessLeaveReviewRouteArgs(
+        businessListingId: businessListingId,
+        businessName: businessName,
+      ),
+    );
   }
 
   @override
@@ -311,15 +337,10 @@ class _BusinessListingState extends ConsumerState<BusinessListing> {
                               ),
                             ),
                             FilledButton(
-                              onPressed: () {
-                                Navigator.of(context).pushNamed(
-                                  AppRoutes.leaveReview,
-                                  arguments: BusinessLeaveReviewRouteArgs(
-                                    businessListingId: service.id,
-                                    businessName: business.name,
-                                  ),
-                                );
-                              },
+                              onPressed: () => _openLeaveReview(
+                                businessListingId: service.id,
+                                businessName: business.name,
+                              ),
                               child: Text(
                                 canLeaveReview
                                     ? 'Leave review'

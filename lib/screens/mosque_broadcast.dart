@@ -2,9 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/api_error_mapper.dart';
-import '../data/auth_provider.dart';
 import '../models/broadcast_message.dart';
-import '../navigation/app_startup.dart';
 import '../services/mosque_service.dart';
 import '../theme/app_colors.dart';
 import '../widgets/common/async_states.dart';
@@ -38,7 +36,6 @@ class _MosqueBroadcastState extends ConsumerState<MosqueBroadcast> {
   late final MosqueService _mosqueService;
 
   bool _isLoading = true;
-  bool _redirectingToLogin = false;
   List<BroadcastMessage> _messages = const <BroadcastMessage>[];
   String? _errorMessage;
 
@@ -75,25 +72,9 @@ class _MosqueBroadcastState extends ConsumerState<MosqueBroadcast> {
     }
   }
 
-  void _redirectToLogin() {
-    if (_redirectingToLogin || !mounted) return;
-    _redirectingToLogin = true;
-    scheduleUnauthenticatedRedirect(context);
-  }
-
   @override
   Widget build(BuildContext context) {
-    final authState = ref.watch(authProvider);
-
-    if (authState.hasValue && authState.valueOrNull == null) {
-      _redirectToLogin();
-      return const Scaffold(
-        backgroundColor: _BroadcastPalette.screen,
-        body: LoadingState(label: 'Redirecting...'),
-      );
-    }
-
-    if (authState.isLoading || _isLoading) {
+    if (_isLoading) {
       return const Scaffold(
         backgroundColor: _BroadcastPalette.screen,
         body: LoadingState(label: 'Loading mosque messages...'),

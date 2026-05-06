@@ -58,3 +58,21 @@ void scheduleUnauthenticatedRedirect(
     Navigator.of(context).pushNamedAndRemoveUntil(route, (_) => false);
   });
 }
+
+Future<void> promptForLogin(
+  BuildContext context, {
+  String message = 'Log in to continue.',
+}) async {
+  final messenger = ScaffoldMessenger.maybeOf(context);
+  if (message.trim().isNotEmpty) {
+    messenger?.hideCurrentSnackBar();
+    messenger?.showSnackBar(SnackBar(content: Text(message.trim())));
+  }
+
+  await OnboardingPreferencesService().markAuthEntryPreferred();
+  if (!context.mounted) {
+    return;
+  }
+
+  Navigator.of(context).pushNamed(AppRoutes.login);
+}

@@ -4,10 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../core/api_error_mapper.dart';
-import '../data/auth_provider.dart';
 import '../data/mosque_provider.dart';
 import '../models/mosque_model.dart';
-import '../navigation/app_startup.dart';
 import '../navigation/app_routes.dart';
 import '../screens/event_search_listing.dart';
 import '../services/location_preferences_service.dart';
@@ -117,7 +115,6 @@ class _MosqueSearchScreenState extends ConsumerState<MosqueSearchScreen> {
   String _location = LocationPreferencesService.defaultLocation;
   SavedUserLocation? _savedLocation;
   bool _requestedLoad = false;
-  bool _redirectingToLogin = false;
 
   @override
   void initState() {
@@ -179,12 +176,6 @@ class _MosqueSearchScreenState extends ConsumerState<MosqueSearchScreen> {
     final value = _searchController.text;
     if (value == _searchQuery) return;
     setState(() => _searchQuery = value);
-  }
-
-  void _redirectToLogin() {
-    if (_redirectingToLogin || !mounted) return;
-    _redirectingToLogin = true;
-    scheduleUnauthenticatedRedirect(context);
   }
 
   void _selectTab(int value) {
@@ -280,18 +271,9 @@ class _MosqueSearchScreenState extends ConsumerState<MosqueSearchScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final authState = ref.watch(authProvider);
     final mosqueState = ref.watch(mosqueProvider);
 
-    if (authState.hasValue && authState.valueOrNull == null) {
-      _redirectToLogin();
-      return const Scaffold(
-        backgroundColor: AppColors.background,
-        body: LoadingState(label: 'Redirecting...'),
-      );
-    }
-
-    if (authState.isLoading || !_requestedLoad) {
+    if (!_requestedLoad) {
       return const Scaffold(
         backgroundColor: AppColors.background,
         body: LoadingState(label: 'Loading nearby mosques...'),

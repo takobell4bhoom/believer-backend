@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../data/auth_provider.dart';
 import '../data/mosque_provider.dart';
 import '../models/mosque_model.dart';
-import '../navigation/app_startup.dart';
 import '../navigation/app_routes.dart';
 import '../screens/event_search_listing.dart';
 import '../screens/location_setup_screen.dart';
@@ -26,7 +24,6 @@ class _EventsSearchState extends ConsumerState<EventsSearch> {
   String _location = 'Location unavailable';
   SavedUserLocation? _savedLocation;
   bool _requestedLoad = false;
-  bool _redirectingToLogin = false;
 
   @override
   void initState() {
@@ -86,12 +83,6 @@ class _EventsSearchState extends ConsumerState<EventsSearch> {
     }
   }
 
-  void _redirectToLogin() {
-    if (_redirectingToLogin || !mounted) return;
-    _redirectingToLogin = true;
-    scheduleUnauthenticatedRedirect(context);
-  }
-
   Future<void> _openLocation() async {
     await Navigator.of(context).pushNamed(
       AppRoutes.locationSetup,
@@ -134,15 +125,9 @@ class _EventsSearchState extends ConsumerState<EventsSearch> {
 
   @override
   Widget build(BuildContext context) {
-    final authState = ref.watch(authProvider);
     final mosqueState = ref.watch(mosqueProvider);
 
-    if (authState.hasValue && authState.valueOrNull == null) {
-      _redirectToLogin();
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    }
-
-    if (authState.isLoading || !_requestedLoad) {
+    if (!_requestedLoad) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 

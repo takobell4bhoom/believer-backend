@@ -43,6 +43,7 @@ const listQuerySchema = z.object({
 });
 
 const nearbyQuerySchema = z.object({
+  page: z.coerce.number().int().positive().default(1),
   latitude: z.coerce.number().min(-90).max(90),
   longitude: z.coerce.number().min(-180).max(180),
   radius: z.coerce.number().positive().max(241.4016).default(80.4672),
@@ -1534,12 +1535,13 @@ export async function mosqueRoutes(app) {
       throw new HttpError(400, 'VALIDATION_ERROR', 'latitude and longitude are required');
     }
 
+    const { page, limit, offset } = parsePagination(query, 100);
     const userId = await getOptionalUserId(app, request);
     const nearby = await findNearbyMosques({
       latitude: resolved.latitude,
       longitude: resolved.longitude,
       radiusKm: resolved.radiusKm,
-      limit: query.limit,
+      limit: 2000,
       userId,
       extraWhere: [publicMosqueVisibilityClause]
     });
@@ -1552,7 +1554,7 @@ export async function mosqueRoutes(app) {
           latitude: resolved.latitude,
           longitude: resolved.longitude,
           radiusKm: resolved.radiusKm,
-          limit: Math.min(query.limit, 20)
+          limit: 2000
         });
       } catch (error) {
         request.log.warn(
@@ -1576,13 +1578,21 @@ export async function mosqueRoutes(app) {
 
     const mergedNearby = mergeNearbyMosques({
       dbMosques: nearby,
-      googleMosques: googleNearby,
-      limit: query.limit
+      googleMosques: googleNearby
     });
 
-    return successResponse({
-        items: mergedNearby
-      });
+    return paginatedResponse(
+      {
+        items: mergedNearby.slice(offset, offset + limit)
+      },
+      {
+        page,
+        limit,
+        total: mergedNearby.length,
+        hasMore: offset + limit < mergedNearby.length,
+        hasNext: offset + limit < mergedNearby.length
+      }
+    );
   });
 
   app.get('/api/v1/mosques/location-resolve', async (request) => {

@@ -361,6 +361,62 @@ class _MosquePageState extends ConsumerState<MosquePage> {
     }
   }
 
+  Future<bool> _ensureAuthenticatedAction(String message) async {
+    if (ref.read(authProvider).valueOrNull != null) {
+      return true;
+    }
+
+    await promptForLogin(context, message: message);
+    return false;
+  }
+
+  Future<void> _handleBookmarkTap(MosqueModel mosque) async {
+    final canContinue =
+        await _ensureAuthenticatedAction('Log in to save mosques.');
+    if (!canContinue) {
+      return;
+    }
+
+    await _toggleBookmark(mosque);
+  }
+
+  Future<void> _openNotificationSettings(
+    _MosquePageContent content,
+  ) async {
+    final canContinue =
+        await _ensureAuthenticatedAction('Log in to manage mosque alerts.');
+    if (!canContinue || !mounted) {
+      return;
+    }
+
+    Navigator.of(context).pushNamed(
+      AppRoutes.mosqueNotificationSettings,
+      arguments: MosqueNotificationSettingsRouteArgs(
+        mosqueId: content.mosqueId,
+        mosqueName: content.mosqueName,
+      ),
+    );
+  }
+
+  Future<void> _openLeaveReview(_MosquePageContent content) async {
+    final canContinue =
+        await _ensureAuthenticatedAction('Log in to leave a review.');
+    if (!canContinue || !mounted) {
+      return;
+    }
+
+    await Navigator.of(context).pushNamed(
+      AppRoutes.leaveReview,
+      arguments: LeaveReviewRouteArgs(
+        mosqueId: content.mosqueId,
+        mosqueName: content.mosqueName,
+      ),
+    );
+    if (mounted) {
+      _loadLiveContent();
+    }
+  }
+
   Future<OutboundActionResult> _launchMosqueConnectLink(
     _SocialMediaLink link, {
     required String mosqueName,
@@ -440,21 +496,6 @@ class _MosquePageState extends ConsumerState<MosquePage> {
       });
     }
 
-    if (authState.hasValue && authState.valueOrNull == null) {
-      _scheduleLoginRedirect(context);
-      return const _MosquePageScaffold(
-        title: 'Mosque Page',
-        child: LoadingState(label: 'Redirecting...'),
-      );
-    }
-
-    if (authState.isLoading) {
-      return const _MosquePageScaffold(
-        title: 'Mosque Page',
-        child: LoadingState(label: 'Checking your session...'),
-      );
-    }
-
     final mosqueState = ref.watch(_resolvedMosqueProvider(widget.args));
     return mosqueState.when(
       loading: () => const _MosquePageScaffold(
@@ -525,7 +566,7 @@ class _MosquePageState extends ConsumerState<MosquePage> {
             ),
           ),
           onBookmarkTap: supportsBelieverFeatures
-              ? () => _toggleBookmark(resolvedMosque)
+              ? () => _handleBookmarkTap(resolvedMosque)
               : null,
           isBookmarked: resolvedMosque.isBookmarked,
           bookmarkBusy: _bookmarkBusy,
@@ -565,15 +606,7 @@ class _MosquePageState extends ConsumerState<MosquePage> {
               ),
             ),
             onNotifyTap: supportsBelieverFeatures
-                ? () {
-                    Navigator.of(context).pushNamed(
-                      AppRoutes.mosqueNotificationSettings,
-                      arguments: MosqueNotificationSettingsRouteArgs(
-                        mosqueId: content.mosqueId,
-                        mosqueName: content.mosqueName,
-                      ),
-                    );
-                  }
+                ? () => _openNotificationSettings(content)
                 : null,
           ),
           child: SingleChildScrollView(
@@ -668,18 +701,7 @@ class _MosquePageState extends ConsumerState<MosquePage> {
                         }
                       : null,
                   onLeaveReview: supportsBelieverFeatures
-                      ? () async {
-                          await Navigator.of(context).pushNamed(
-                            AppRoutes.leaveReview,
-                            arguments: LeaveReviewRouteArgs(
-                              mosqueId: content.mosqueId,
-                              mosqueName: content.mosqueName,
-                            ),
-                          );
-                          if (mounted) {
-                            _loadLiveContent();
-                          }
-                        }
+                      ? () => _openLeaveReview(content)
                       : null,
                 ),
               ],
@@ -3469,10 +3491,6 @@ MosqueModel? _findMosqueById(List<MosqueModel> mosques, String mosqueId) {
 
 bool _isUnauthorized(Object error) {
   return error is ApiException && error.statusCode == 401;
-}
-
-void _scheduleLoginRedirect(BuildContext context) {
-  scheduleUnauthenticatedRedirect(context);
 }
 
 String _buildMosqueShareText(MosqueModel mosque, _MosquePageContent content) {

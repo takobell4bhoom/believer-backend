@@ -15,6 +15,7 @@ import '../models/mosque_model.dart';
 import '../models/notification_enabled_mosque.dart';
 import '../models/prayer_timings.dart';
 import '../navigation/mosque_detail_route_args.dart';
+import '../navigation/app_startup.dart';
 import '../navigation/app_routes.dart';
 import '../services/location_preferences_service.dart';
 import '../services/mosque_service.dart';
@@ -154,6 +155,7 @@ class _HomePage1State extends ConsumerState<HomePage1> {
             latitude: savedLocation.latitude!,
             longitude: savedLocation.longitude!,
             radiusMiles: defaultNearbyRadiusMiles,
+            limit: nearbyMosquesPageSize,
           );
     } catch (_) {
       // Home keeps rendering its conservative shell even if nearby data fails.
@@ -342,6 +344,14 @@ class _HomePage1State extends ConsumerState<HomePage1> {
   }
 
   Future<void> _openBusinessRegistrationEntry() async {
+    if (ref.read(authProvider).valueOrNull == null) {
+      await promptForLogin(
+        context,
+        message: 'Log in to register your business.',
+      );
+      return;
+    }
+
     await Navigator.of(context).pushNamed(
       AppRoutes.businessRegistrationIntro,
       arguments: const BusinessRegistrationFlowRouteArgs(
@@ -431,7 +441,6 @@ class _HomePage1State extends ConsumerState<HomePage1> {
     final featuredMosque = hasPreciseLocation && nearbyMosques.isNotEmpty
         ? nearbyMosques.first
         : null;
-    final hasNearbyFeaturedMosque = featuredMosque != null;
     final selectedPrayerMosque = hasPreciseLocation
         ? _selectNearestFollowedMosque(
             nearbyMosques: nearbyMosques,

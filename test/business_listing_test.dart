@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:believer/data/auth_provider.dart';
 import 'package:believer/data/mock_provider.dart';
@@ -30,6 +31,16 @@ class _SignedOutAuthNotifier extends AuthNotifier {
   @override
   Future<AuthSession?> build() async {
     return null;
+  }
+}
+
+class _RecordingNavigatorObserver extends NavigatorObserver {
+  final List<String?> pushedRouteNames = <String?>[];
+
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    pushedRouteNames.add(route.settings.name);
+    super.didPush(route, previousRoute);
   }
 }
 
@@ -122,6 +133,8 @@ void main() {
 
   testWidgets('business listing stays publicly browsable for signed-out users',
       (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final observer = _RecordingNavigatorObserver();
     final container = ProviderContainer(
       overrides: [
         authProvider.overrideWith(_SignedOutAuthNotifier.new),
@@ -133,6 +146,10 @@ void main() {
       UncontrolledProviderScope(
         container: container,
         child: MaterialApp(
+          navigatorObservers: [observer],
+          routes: {
+            AppRoutes.login: (_) => const Scaffold(body: Text('Login stub')),
+          },
           home: BusinessListing(
             args: BusinessListingRouteArgs(service: _sampleService),
           ),
@@ -145,6 +162,14 @@ void main() {
     expect(find.text('Barakah Caterers'), findsOneWidget);
     expect(find.text('Redirecting...'), findsNothing);
     expect(find.text('Login to leave review'), findsOneWidget);
+
+    tester
+        .widget<FilledButton>(
+            find.widgetWithText(FilledButton, 'Login to leave review'))
+        .onPressed!();
+    await tester.pumpAndSettle();
+
+    expect(observer.pushedRouteNames, contains(AppRoutes.login));
   });
 
   testWidgets('business listing shows honest empty state without a service',

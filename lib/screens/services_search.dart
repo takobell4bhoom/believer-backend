@@ -8,6 +8,7 @@ import '../features/business_registration/business_registration_flow_controller.
 import '../features/business_registration/business_registration_models.dart';
 import '../screens/business_registration_basic/business_registration_basic_taxonomy.dart';
 import '../models/service.dart';
+import '../navigation/app_startup.dart';
 import '../navigation/app_routes.dart';
 import '../screens/business_listing.dart';
 import '../services/location_preferences_service.dart';
@@ -168,6 +169,14 @@ class _ServicesSearchBodyState extends ConsumerState<_ServicesSearchBody> {
   }
 
   Future<void> _openBusinessRegistrationEntry() async {
+    if (ref.read(authProvider).valueOrNull == null) {
+      await promptForLogin(
+        context,
+        message: 'Log in to register your business.',
+      );
+      return;
+    }
+
     await Navigator.of(context).pushNamed(
       AppRoutes.businessRegistrationIntro,
       arguments: const BusinessRegistrationFlowRouteArgs(

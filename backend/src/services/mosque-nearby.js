@@ -159,7 +159,7 @@ export async function findNearbyMosques({
     })
     .filter((row) => row.distanceKm <= radiusKm)
     .sort((a, b) => a.distanceKm - b.distanceKm)
-    .slice(0, limit);
+    .slice(0, Number.isFinite(limit) ? limit : Number.MAX_SAFE_INTEGER);
 }
 
 function normalizeCompareText(value) {
@@ -214,7 +214,7 @@ function isLikelySameMosque(left, right) {
   return hasSameName(left, right) || hasSameAddress(left, right);
 }
 
-export function mergeNearbyMosques({ dbMosques = [], googleMosques = [], limit = 20 }) {
+export function mergeNearbyMosques({ dbMosques = [], googleMosques = [], limit }) {
   const merged = [...dbMosques];
   const seenGoogleIds = new Set();
 
@@ -232,7 +232,7 @@ export function mergeNearbyMosques({ dbMosques = [], googleMosques = [], limit =
     merged.push(mosque);
   }
 
-  return merged
+  const sorted = merged
     .sort((left, right) => {
       const distanceDelta = (left.distanceKm ?? Number.POSITIVE_INFINITY) -
         (right.distanceKm ?? Number.POSITIVE_INFINITY);
@@ -245,6 +245,9 @@ export function mergeNearbyMosques({ dbMosques = [], googleMosques = [], limit =
       }
 
       return left.sourceType === MOSQUE_SOURCE_TYPES.believerDb ? -1 : 1;
-    })
-    .slice(0, limit);
+    });
+
+  return Number.isFinite(limit)
+    ? sorted.slice(0, limit)
+    : sorted;
 }

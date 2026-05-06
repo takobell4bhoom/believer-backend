@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:believer/data/auth_provider.dart';
 import 'package:believer/data/mock_provider.dart';
@@ -103,6 +104,23 @@ class _AdminAuthNotifier extends AuthNotifier {
         role: 'admin',
       ),
     );
+  }
+}
+
+class _SignedOutAuthNotifier extends AuthNotifier {
+  @override
+  Future<AuthSession?> build() async {
+    return null;
+  }
+}
+
+class _RecordingNavigatorObserver extends NavigatorObserver {
+  final List<String?> pushedRouteNames = <String?>[];
+
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    pushedRouteNames.add(route.settings.name);
+    super.didPush(route, previousRoute);
   }
 }
 
@@ -801,6 +819,94 @@ void main() {
 
     expect(bookmarkService.addCalls, 1);
     expect(find.byIcon(Icons.bookmark), findsOneWidget);
+  });
+
+  testWidgets(
+      'signed-out guests can read mosque page content while restricted actions route to login',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final mosque = _sampleMosque();
+    final bookmarkService = _FakeBookmarkService();
+    final observer = _RecordingNavigatorObserver();
+    final container = ProviderContainer(
+      overrides: [
+        authProvider.overrideWith(_SignedOutAuthNotifier.new),
+        mosqueProvider.overrideWith(_EmptyMosqueNotifier.new),
+      ],
+    );
+    addTearDown(container.dispose);
+    container.read(mosqueProvider.notifier).addMosque(mosque);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          navigatorObservers: [observer],
+          routes: {
+            AppRoutes.login: (_) => Scaffold(
+                  appBar: AppBar(),
+                  body: const Text('Login stub'),
+                ),
+            AppRoutes.mosqueBroadcast: (_) => Scaffold(
+                  appBar: AppBar(),
+                  body: const Text('Mosque broadcast stub'),
+                ),
+          },
+          home: MosquePage(
+            args: MosqueDetailRouteArgs.fromMosque(mosque),
+            mosqueService: _FakeMosqueService(),
+            bookmarkService: bookmarkService,
+          ),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    expect(find.text('Islamic Centre of South Florida'), findsWidgets);
+    expect(find.text('Backend Family Night'), findsOneWidget);
+    expect(find.text('Backend Broadcast Title'), findsOneWidget);
+    expect(find.text('Login to leave review'), findsOneWidget);
+    expect(find.text('Redirecting...'), findsNothing);
+
+    final allMessagesButton = find.text('See all 2 messages in last 60 days');
+    await tester.ensureVisible(allMessagesButton);
+    await tester.tap(allMessagesButton);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Mosque broadcast stub'), findsOneWidget);
+
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    tester
+        .widget<IconButton>(
+          find
+              .ancestor(
+                of: find.byIcon(Icons.bookmark_border).first,
+                matching: find.byType(IconButton),
+              )
+              .first,
+        )
+        .onPressed!();
+    await tester.pumpAndSettle();
+
+    expect(bookmarkService.addCalls, 0);
+    expect(observer.pushedRouteNames, contains(AppRoutes.login));
+
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    tester
+        .widget<TextButton>(
+            find.widgetWithText(TextButton, 'Login to leave review'))
+        .onPressed!();
+    await tester.pumpAndSettle();
+
+    expect(
+      observer.pushedRouteNames.where((name) => name == AppRoutes.login),
+      isNotEmpty,
+    );
   });
 
   testWidgets(

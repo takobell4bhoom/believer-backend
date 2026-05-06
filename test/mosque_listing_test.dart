@@ -15,11 +15,31 @@ import 'package:believer/services/location_preferences_service.dart';
 
 class _TrackingMosqueNotifier extends MosqueNotifier {
   static List<MosqueModel> mosques = const <MosqueModel>[];
+  static Map<int, List<MosqueModel>> mosquesByRadiusMiles =
+      const <int, List<MosqueModel>>{};
   static double? lastLatitude;
   static double? lastLongitude;
   static double? lastRadiusMiles;
   static double? lastRadiusKm;
+  static int lastPage = 0;
+  static int lastLimit = 0;
   static int loadNearbyCallCount = 0;
+  static List<int> requestedPages = <int>[];
+  static Set<int> failingPages = <int>{};
+
+  static void reset() {
+    mosques = const <MosqueModel>[];
+    mosquesByRadiusMiles = const <int, List<MosqueModel>>{};
+    lastLatitude = null;
+    lastLongitude = null;
+    lastRadiusMiles = null;
+    lastRadiusKm = null;
+    lastPage = 0;
+    lastLimit = 0;
+    loadNearbyCallCount = 0;
+    requestedPages = <int>[];
+    failingPages = <int>{};
+  }
 
   @override
   Future<List<MosqueModel>> build() async {
@@ -32,15 +52,40 @@ class _TrackingMosqueNotifier extends MosqueNotifier {
     required double longitude,
     double? radiusMiles,
     double? radiusKm,
-    int limit = 20,
+    int page = 1,
+    int limit = nearbyMosquesPageSize,
+    bool append = false,
   }) async {
     loadNearbyCallCount += 1;
     lastLatitude = latitude;
     lastLongitude = longitude;
     lastRadiusMiles = radiusMiles;
     lastRadiusKm = radiusKm;
-    state = AsyncData(mosques);
-    return mosques;
+    lastPage = page;
+    lastLimit = limit;
+    requestedPages = [...requestedPages, page];
+
+    if (failingPages.contains(page)) {
+      throw StateError('failed to load page $page');
+    }
+
+    final radiusKey = (radiusMiles ?? defaultNearbyRadiusMiles).round();
+    final availableMosques = mosquesByRadiusMiles[radiusKey] ?? mosques;
+    final pageStart = (page - 1) * limit;
+    final pageItems =
+        availableMosques.skip(pageStart).take(limit).toList(growable: false);
+    final visibleItems = append
+        ? [...(state.valueOrNull ?? const <MosqueModel>[]), ...pageItems]
+        : pageItems;
+
+    updateNearbyPagination(
+      page: page,
+      limit: limit,
+      hasMore: pageStart + pageItems.length < availableMosques.length,
+      total: availableMosques.length,
+    );
+    state = AsyncData(visibleItems);
+    return visibleItems;
   }
 }
 
@@ -53,7 +98,160 @@ class _FakeLocationPreferencesService extends LocationPreferencesService {
   Future<SavedUserLocation?> loadSavedLocation() async => savedLocation;
 }
 
+class _SignedOutAuthNotifier extends AuthNotifier {
+  @override
+  Future<AuthSession?> build() async {
+    return null;
+  }
+}
+
+MosqueModel _buildNearbyMosque({
+  required int index,
+  required double distanceMiles,
+  String? name,
+  List<String> classTags = const <String>[],
+  List<String> eventTags = const <String>[],
+}) {
+  return MosqueModel(
+    id: 'listing-mosque-$index',
+    name: name ?? 'Listing Mosque $index',
+    addressLine: '$index Mercy Road',
+    city: 'Jacksonville',
+    state: 'FL',
+    country: 'US',
+    imageUrl: '',
+    rating: 4.0 + ((index % 5) * 0.1),
+    reviewCount: 4,
+    distanceMiles: distanceMiles,
+    sect: 'Community',
+    womenPrayerArea: true,
+    parking: true,
+    wudu: true,
+    facilities: const ['women_area', 'parking', 'wudu'],
+    isVerified: true,
+    isBookmarked: false,
+    duhrTime: '01:15 PM',
+    asarTime: index.isEven ? '04:45 PM' : '--',
+    isOpenNow: false,
+    classTags: classTags,
+    eventTags: eventTags,
+  );
+}
+
+Widget _buildListingHarness({
+  required ProviderContainer container,
+  SavedUserLocation? savedLocation,
+}) {
+  return UncontrolledProviderScope(
+    container: container,
+    child: MaterialApp(
+      onGenerateRoute: (settings) {
+        if (settings.name == AppRoutes.sortFilterMosque) {
+          return MaterialPageRoute<void>(
+            builder: (_) => SortFilterMosque(
+              initialFilters: settings.arguments as Map<String, dynamic>?,
+            ),
+            settings: settings,
+          );
+        }
+        return null;
+      },
+      home: MosqueListing(
+        locationPreferencesService: _FakeLocationPreferencesService(
+          savedLocation ??
+              const SavedUserLocation(
+                label: 'Tampa, Florida',
+                latitude: 27.9506,
+                longitude: -82.4572,
+              ),
+        ),
+      ),
+    ),
+  );
+}
+
+Future<void> _scrollToLoadMore(WidgetTester tester) async {
+  final listView = find.byType(ListView).last;
+  for (var index = 0;
+      index < 12 && find.textContaining('Load more mosques').evaluate().isEmpty;
+      index++) {
+    await tester.drag(listView, const Offset(0, -700));
+    await tester.pumpAndSettle();
+  }
+}
+
 void main() {
+  testWidgets(
+      'signed-out guests can browse mosque listing and open mosque pages',
+      (tester) async {
+    const mosque = MosqueModel(
+      id: 'listing-mosque-guest',
+      name: 'Guest Friendly Masjid',
+      addressLine: '42 Crescent Road',
+      city: 'Tampa',
+      state: 'FL',
+      country: 'US',
+      imageUrl: '',
+      rating: 4.5,
+      reviewCount: 8,
+      distanceMiles: 1.8,
+      sect: 'Community',
+      womenPrayerArea: true,
+      parking: true,
+      wudu: true,
+      facilities: ['women_area', 'parking', 'wudu'],
+      isVerified: true,
+      isBookmarked: false,
+      duhrTime: '01:10 PM',
+      asarTime: '04:40 PM',
+      isOpenNow: true,
+      classTags: ['Tafsir Circle'],
+      eventTags: ['Family Night'],
+    );
+
+    _TrackingMosqueNotifier.reset();
+    _TrackingMosqueNotifier.mosques = const <MosqueModel>[mosque];
+
+    final container = ProviderContainer(
+      overrides: [
+        authProvider.overrideWith(_SignedOutAuthNotifier.new),
+        mosqueProvider.overrideWith(_TrackingMosqueNotifier.new),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          routes: {
+            AppRoutes.mosqueDetail: (_) =>
+                const Scaffold(body: Text('Mosque page stub')),
+          },
+          home: MosqueListing(
+            locationPreferencesService: _FakeLocationPreferencesService(
+              const SavedUserLocation(
+                label: 'Tampa, Florida',
+                latitude: 27.9506,
+                longitude: -82.4572,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    expect(find.text('Guest Friendly Masjid'), findsOneWidget);
+    expect(find.text('Redirecting...'), findsNothing);
+
+    await tester.tap(find.text('Guest Friendly Masjid'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Mosque page stub'), findsOneWidget);
+  });
+
   testWidgets('mosque listing surfaces honest summary content', (tester) async {
     const mosque = MosqueModel(
       id: 'listing-mosque-1',
@@ -87,12 +285,8 @@ void main() {
       'auth.user.email': 'test@example.com',
       'auth.user.role': 'community',
     });
+    _TrackingMosqueNotifier.reset();
     _TrackingMosqueNotifier.mosques = const <MosqueModel>[mosque];
-    _TrackingMosqueNotifier.lastLatitude = null;
-    _TrackingMosqueNotifier.lastLongitude = null;
-    _TrackingMosqueNotifier.lastRadiusMiles = null;
-    _TrackingMosqueNotifier.lastRadiusKm = null;
-    _TrackingMosqueNotifier.loadNearbyCallCount = 0;
 
     final container = ProviderContainer(
       overrides: [
@@ -168,12 +362,8 @@ void main() {
       'auth.user.email': 'test@example.com',
       'auth.user.role': 'community',
     });
+    _TrackingMosqueNotifier.reset();
     _TrackingMosqueNotifier.mosques = const <MosqueModel>[];
-    _TrackingMosqueNotifier.lastLatitude = null;
-    _TrackingMosqueNotifier.lastLongitude = null;
-    _TrackingMosqueNotifier.lastRadiusMiles = null;
-    _TrackingMosqueNotifier.lastRadiusKm = null;
-    _TrackingMosqueNotifier.loadNearbyCallCount = 0;
 
     final container = ProviderContainer(
       overrides: [
@@ -213,122 +403,23 @@ void main() {
   });
 
   testWidgets(
-      'default 50 mile filter is frontend-only after loading the max nearby radius',
+      'first nearby load shows only the initial batch and load more appends the next batch',
       (tester) async {
-    const nearbyMosque = MosqueModel(
-      id: 'listing-mosque-near',
-      name: 'Neighborhood Masjid',
-      addressLine: '15 Mercy Road',
-      city: 'Jacksonville',
-      state: 'FL',
-      country: 'US',
-      imageUrl: '',
-      rating: 4.6,
-      reviewCount: 4,
-      distanceMiles: 0.8,
-      sect: 'Community',
-      womenPrayerArea: true,
-      parking: true,
-      wudu: false,
-      facilities: ['women_area', 'parking'],
-      isVerified: true,
-      isBookmarked: false,
-      duhrTime: '01:15 PM',
-      asarTime: '--',
-      isOpenNow: false,
-      classTags: <String>[],
-      eventTags: <String>[],
-    );
-    const midRangeMosque = MosqueModel(
-      id: 'listing-mosque-mid',
-      name: 'County Islamic Center',
-      addressLine: '20 Crescent Avenue',
-      city: 'Jacksonville',
-      state: 'FL',
-      country: 'US',
-      imageUrl: '',
-      rating: 4.5,
-      reviewCount: 3,
-      distanceMiles: 30,
-      sect: 'Community',
-      womenPrayerArea: true,
-      parking: true,
-      wudu: true,
-      facilities: ['women_area', 'parking', 'wudu'],
-      isVerified: true,
-      isBookmarked: false,
-      duhrTime: '01:20 PM',
-      asarTime: '--',
-      isOpenNow: false,
-      classTags: <String>[],
-      eventTags: <String>[],
-    );
-    const edgeMosque = MosqueModel(
-      id: 'listing-mosque-edge',
-      name: 'Fifty Mile Masjid',
-      addressLine: '50 Unity Drive',
-      city: 'Jacksonville',
-      state: 'FL',
-      country: 'US',
-      imageUrl: '',
-      rating: 4.1,
-      reviewCount: 5,
-      distanceMiles: 50,
-      sect: 'Community',
-      womenPrayerArea: true,
-      parking: true,
-      wudu: true,
-      facilities: ['women_area', 'parking', 'wudu'],
-      isVerified: true,
-      isBookmarked: false,
-      duhrTime: '01:22 PM',
-      asarTime: '--',
-      isOpenNow: false,
-      classTags: <String>[],
-      eventTags: <String>[],
-    );
-    const fartherMosque = MosqueModel(
-      id: 'listing-mosque-far',
-      name: 'Regional Islamic Center',
-      addressLine: '25 Faith Avenue',
-      city: 'Jacksonville',
-      state: 'FL',
-      country: 'US',
-      imageUrl: '',
-      rating: 4.2,
-      reviewCount: 2,
-      distanceMiles: 120,
-      sect: 'Community',
-      womenPrayerArea: true,
-      parking: true,
-      wudu: true,
-      facilities: ['women_area', 'parking', 'wudu'],
-      isVerified: true,
-      isBookmarked: false,
-      duhrTime: '01:25 PM',
-      asarTime: '--',
-      isOpenNow: false,
-      classTags: <String>[],
-      eventTags: <String>[],
-    );
-
     SharedPreferences.setMockInitialValues({
       'auth.user.id': 'user-1',
       'auth.user.name': 'Test User',
       'auth.user.email': 'test@example.com',
       'auth.user.role': 'community',
     });
-    _TrackingMosqueNotifier.mosques = const <MosqueModel>[
-      nearbyMosque,
-      midRangeMosque,
-      edgeMosque,
-      fartherMosque,
-    ];
-    _TrackingMosqueNotifier.lastLatitude = null;
-    _TrackingMosqueNotifier.lastLongitude = null;
-    _TrackingMosqueNotifier.lastRadiusMiles = null;
-    _TrackingMosqueNotifier.lastRadiusKm = null;
-    _TrackingMosqueNotifier.loadNearbyCallCount = 0;
+    _TrackingMosqueNotifier.reset();
+    _TrackingMosqueNotifier.mosques = List<MosqueModel>.generate(
+      25,
+      (index) => _buildNearbyMosque(
+        index: index + 1,
+        distanceMiles: index + 1,
+      ),
+      growable: false,
+    );
 
     final container = ProviderContainer(
       overrides: [
@@ -345,87 +436,228 @@ void main() {
     );
     addTearDown(container.dispose);
 
-    await tester.pumpWidget(
-      UncontrolledProviderScope(
-        container: container,
-        child: MaterialApp(
-          onGenerateRoute: (settings) {
-            if (settings.name == AppRoutes.sortFilterMosque) {
-              return MaterialPageRoute<void>(
-                builder: (_) => SortFilterMosque(
-                  initialFilters: settings.arguments as Map<String, dynamic>?,
-                ),
-                settings: settings,
-              );
-            }
-            return null;
-          },
-          home: MosqueListing(
-            locationPreferencesService: _FakeLocationPreferencesService(
-              const SavedUserLocation(
-                label: 'Tampa, Florida',
-                latitude: 27.9506,
-                longitude: -82.4572,
-              ),
+    await tester.pumpWidget(_buildListingHarness(container: container));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Listing Mosque 1'), findsOneWidget);
+    expect(find.text('Listing Mosque 21'), findsNothing);
+    expect(find.text('20 Mosques'), findsOneWidget);
+    await _scrollToLoadMore(tester);
+    expect(find.text('Load more mosques'), findsOneWidget);
+    expect(_TrackingMosqueNotifier.lastPage, 1);
+    expect(_TrackingMosqueNotifier.lastLimit, nearbyMosquesPageSize);
+    expect(_TrackingMosqueNotifier.requestedPages, [1]);
+    expect(_TrackingMosqueNotifier.lastRadiusMiles, defaultNearbyRadiusMiles);
+
+    await tester.ensureVisible(find.text('Load more mosques'));
+    await tester.tap(find.text('Load more mosques'));
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(_TrackingMosqueNotifier.requestedPages, [1, 2]);
+    expect(find.text('25 Mosques'), findsOneWidget);
+    expect(find.text('Load more mosques'), findsNothing);
+  });
+
+  testWidgets('changing radius resets nearby paging back to page 1',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({
+      'auth.user.id': 'user-1',
+      'auth.user.name': 'Test User',
+      'auth.user.email': 'test@example.com',
+      'auth.user.role': 'community',
+    });
+    _TrackingMosqueNotifier.reset();
+    _TrackingMosqueNotifier.mosquesByRadiusMiles = <int, List<MosqueModel>>{
+      30: List<MosqueModel>.generate(
+        12,
+        (index) => _buildNearbyMosque(
+          index: index + 1,
+          distanceMiles: index + 1,
+          name: '30 Mile Mosque ${index + 1}',
+        ),
+        growable: false,
+      ),
+      50: List<MosqueModel>.generate(
+        25,
+        (index) => _buildNearbyMosque(
+          index: index + 1,
+          distanceMiles: index + 1,
+          name: '50 Mile Mosque ${index + 1}',
+        ),
+        growable: false,
+      ),
+    };
+    _TrackingMosqueNotifier.mosques =
+        _TrackingMosqueNotifier.mosquesByRadiusMiles[50]!;
+
+    final container = ProviderContainer(
+      overrides: [
+        authTokenStoreProvider.overrideWithValue(
+          _FakeAuthTokenStore(
+            tokens: const AuthTokens(
+              accessToken: 'token',
+              refreshToken: 'refresh',
             ),
           ),
         ),
-      ),
+        mosqueProvider.overrideWith(_TrackingMosqueNotifier.new),
+      ],
     );
+    addTearDown(container.dispose);
 
+    await tester.pumpWidget(_buildListingHarness(container: container));
     await tester.pumpAndSettle();
 
-    expect(find.text('Neighborhood Masjid'), findsOneWidget);
-    expect(find.text('3 Mosques'), findsOneWidget);
-    expect(find.text('Within 50 miles'), findsOneWidget);
-    expect(
-      _TrackingMosqueNotifier.lastRadiusMiles,
-      defaultNearbyRadiusMiles,
-    );
-    expect(_TrackingMosqueNotifier.lastRadiusKm, isNull);
-    expect(_TrackingMosqueNotifier.loadNearbyCallCount, 1);
+    await _scrollToLoadMore(tester);
+    await tester.ensureVisible(find.text('Load more mosques'));
+    await tester.tap(find.text('Load more mosques'));
+    await tester.pump();
+    await tester.pumpAndSettle();
+    expect(find.text('25 Mosques'), findsOneWidget);
 
-    Future<void> applyRadius(int radiusMiles) async {
-      await tester.tap(find.byTooltip('Open filters'));
-      await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Open filters'));
+    await tester.pumpAndSettle();
+    final slider = tester.widget<Slider>(find.byType(Slider));
+    slider.onChanged?.call(30.0);
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Apply'));
+    await tester.tap(find.text('Apply'));
+    await tester.pump();
+    await tester.pumpAndSettle();
 
-      final slider = tester.widget<Slider>(find.byType(Slider));
-      slider.onChanged?.call(radiusMiles.toDouble());
-      await tester.pumpAndSettle();
-      expect(find.text('$radiusMiles miles'), findsOneWidget);
-
-      await tester.ensureVisible(find.text('Apply'));
-      await tester.tap(find.text('Apply'));
-      await tester.pumpAndSettle();
-    }
-
-    await applyRadius(30);
     expect(_TrackingMosqueNotifier.lastRadiusMiles, 30);
-    expect(_TrackingMosqueNotifier.loadNearbyCallCount, 2);
-    expect(find.text('Within 30 miles'), findsOneWidget);
-    expect(find.text('2 Mosques'), findsOneWidget);
-    expect(find.text('Neighborhood Masjid'), findsOneWidget);
+    expect(_TrackingMosqueNotifier.lastPage, 1);
+    expect(find.text('30 Mile Mosque 12'), findsOneWidget);
+    expect(find.text('25 Mosques'), findsNothing);
+    expect(find.text('12 Mosques'), findsOneWidget);
+  });
 
-    await applyRadius(50);
-    expect(_TrackingMosqueNotifier.lastRadiusMiles, 50);
-    expect(_TrackingMosqueNotifier.loadNearbyCallCount, 3);
-    expect(find.text('Within 50 miles'), findsOneWidget);
-    expect(find.text('3 Mosques'), findsOneWidget);
-    expect(find.text('Neighborhood Masjid'), findsOneWidget);
+  testWidgets('changing filters resets nearby paging back to page 1',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({
+      'auth.user.id': 'user-1',
+      'auth.user.name': 'Test User',
+      'auth.user.email': 'test@example.com',
+      'auth.user.role': 'community',
+    });
+    _TrackingMosqueNotifier.reset();
+    _TrackingMosqueNotifier.mosques = List<MosqueModel>.generate(
+      25,
+      (index) => _buildNearbyMosque(
+        index: index + 1,
+        distanceMiles: index + 1,
+        classTags:
+            index >= 20 ? const <String>['Quran Study'] : const <String>[],
+      ),
+      growable: false,
+    );
 
-    await applyRadius(100);
-    expect(_TrackingMosqueNotifier.lastRadiusMiles, 100);
-    expect(_TrackingMosqueNotifier.loadNearbyCallCount, 4);
-    expect(find.text('Within 100 miles'), findsOneWidget);
-    expect(find.text('3 Mosques'), findsOneWidget);
-    expect(find.text('Neighborhood Masjid'), findsOneWidget);
+    final container = ProviderContainer(
+      overrides: [
+        authTokenStoreProvider.overrideWithValue(
+          _FakeAuthTokenStore(
+            tokens: const AuthTokens(
+              accessToken: 'token',
+              refreshToken: 'refresh',
+            ),
+          ),
+        ),
+        mosqueProvider.overrideWith(_TrackingMosqueNotifier.new),
+      ],
+    );
+    addTearDown(container.dispose);
 
-    await applyRadius(150);
-    expect(_TrackingMosqueNotifier.lastRadiusMiles, 150);
-    expect(_TrackingMosqueNotifier.loadNearbyCallCount, 5);
-    expect(find.text('Within 150 miles'), findsOneWidget);
-    expect(find.text('4 Mosques'), findsOneWidget);
-    expect(find.text('Neighborhood Masjid'), findsOneWidget);
+    await tester.pumpWidget(_buildListingHarness(container: container));
+    await tester.pumpAndSettle();
+
+    await _scrollToLoadMore(tester);
+    await tester.ensureVisible(find.text('Load more mosques'));
+    await tester.tap(find.text('Load more mosques'));
+    await tester.pump();
+    await tester.pumpAndSettle();
+    expect(find.text('25 Mosques'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Open filters'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Classes listed'));
+    await tester.tap(find.text('Classes listed'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Apply'));
+    await tester.tap(find.text('Apply'));
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(_TrackingMosqueNotifier.lastPage, 1);
+    expect(_TrackingMosqueNotifier.requestedPages, [1, 2, 1]);
+    expect(find.text('Listing Mosque 21'), findsNothing);
+    expect(find.text('0 Mosques'), findsOneWidget);
+    expect(find.text('Load more mosques'), findsOneWidget);
+  });
+
+  testWidgets(
+      'loading more errors keep already loaded mosques visible and allow retry',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({
+      'auth.user.id': 'user-1',
+      'auth.user.name': 'Test User',
+      'auth.user.email': 'test@example.com',
+      'auth.user.role': 'community',
+    });
+    _TrackingMosqueNotifier.reset();
+    _TrackingMosqueNotifier.mosques = List<MosqueModel>.generate(
+      25,
+      (index) => _buildNearbyMosque(
+        index: index + 1,
+        distanceMiles: index + 1,
+      ),
+      growable: false,
+    );
+    _TrackingMosqueNotifier.failingPages = <int>{2};
+
+    final container = ProviderContainer(
+      overrides: [
+        authTokenStoreProvider.overrideWithValue(
+          _FakeAuthTokenStore(
+            tokens: const AuthTokens(
+              accessToken: 'token',
+              refreshToken: 'refresh',
+            ),
+          ),
+        ),
+        mosqueProvider.overrideWith(_TrackingMosqueNotifier.new),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(_buildListingHarness(container: container));
+    await tester.pumpAndSettle();
+
+    await _scrollToLoadMore(tester);
+    await tester.ensureVisible(find.text('Load more mosques'));
+    await tester.tap(find.text('Load more mosques'));
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(find.text('Listing Mosque 20'), findsOneWidget);
+    expect(find.text('Listing Mosque 21'), findsNothing);
+    expect(
+      find.textContaining('could not load the next nearby batch'),
+      findsOneWidget,
+    );
+    expect(find.text('Retry loading more mosques'), findsOneWidget);
+
+    _TrackingMosqueNotifier.failingPages = <int>{};
+    final retryButton =
+        find.widgetWithText(OutlinedButton, 'Retry loading more mosques');
+    await tester.ensureVisible(retryButton);
+    tester.widget<OutlinedButton>(retryButton).onPressed!();
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(_TrackingMosqueNotifier.requestedPages, [1, 2, 2]);
+    expect(find.text('25 Mosques'), findsOneWidget);
+    expect(find.text('Retry loading more mosques'), findsNothing);
   });
 
   testWidgets(
@@ -463,6 +695,7 @@ void main() {
       'auth.user.email': 'test@example.com',
       'auth.user.role': 'community',
     });
+    _TrackingMosqueNotifier.reset();
     _TrackingMosqueNotifier.mosques = const <MosqueModel>[googleMosque];
     MosqueDetailRouteArgs? pushedArgs;
 

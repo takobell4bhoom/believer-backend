@@ -2,12 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/api_error_mapper.dart';
-import '../data/auth_provider.dart';
 import '../data/mosque_provider.dart';
 import '../models/discovery_event.dart';
 import '../models/mosque_content.dart';
 import '../models/mosque_model.dart';
-import '../navigation/app_startup.dart';
 import '../navigation/app_routes.dart';
 import '../screens/event_detail_screen.dart';
 import '../services/location_preferences_service.dart';
@@ -126,7 +124,6 @@ class _EventSearchListingState extends ConsumerState<EventSearchListing> {
   String _filterType = _typeOptions.first;
   String? _selectedCategory;
   bool _requestedLoad = false;
-  bool _redirectingToLogin = false;
 
   @override
   void initState() {
@@ -190,12 +187,6 @@ class _EventSearchListingState extends ConsumerState<EventSearchListing> {
     } catch (_) {
       // Error UI is handled via mosqueProvider.
     }
-  }
-
-  void _redirectToLogin() {
-    if (_redirectingToLogin || !mounted) return;
-    _redirectingToLogin = true;
-    scheduleUnauthenticatedRedirect(context);
   }
 
   void _focusUpcomingResults() {
@@ -442,18 +433,9 @@ class _EventSearchListingState extends ConsumerState<EventSearchListing> {
 
   @override
   Widget build(BuildContext context) {
-    final authState = ref.watch(authProvider);
     final mosqueState = ref.watch(mosqueProvider);
 
-    if (authState.hasValue && authState.valueOrNull == null) {
-      _redirectToLogin();
-      return const Scaffold(
-        backgroundColor: Color(0xFFF3F2F0),
-        body: LoadingState(label: 'Redirecting...'),
-      );
-    }
-
-    if (authState.isLoading || !_requestedLoad) {
+    if (!_requestedLoad) {
       return const Scaffold(
         backgroundColor: Color(0xFFF3F2F0),
         body: LoadingState(label: 'Loading event listings...'),

@@ -11,6 +11,7 @@ const GOOGLE_NEARBY_SEARCH_ENDPOINT =
   'https://places.googleapis.com/v1/places:searchNearby';
 export const GOOGLE_SAFE_NEARBY_RADIUS_KM = 50;
 const GOOGLE_NEARBY_BATCH_SIZE = 4;
+const GOOGLE_NEARBY_RESULT_LIMIT = 2000;
 
 function offsetCoordinate({ latitude, longitude, northKm = 0, eastKm = 0 }) {
   const nextLatitude = latitude + (northKm / 111.32);
@@ -414,7 +415,7 @@ export function createLocationLookupService({
       const normalizedLongitude = Number(longitude);
       const normalizedRadiusKm = Number(radiusKm);
       const normalizedLimit = Number.isFinite(limit)
-        ? Math.max(1, Math.min(20, Math.trunc(limit)))
+        ? Math.max(1, Math.min(GOOGLE_NEARBY_RESULT_LIMIT, Math.trunc(limit)))
         : 20;
 
       if (
@@ -447,7 +448,7 @@ export function createLocationLookupService({
               latitude: center.latitude,
               longitude: center.longitude,
               radiusKm: searchRadiusKm,
-              limit: normalizedLimit
+              limit: Math.min(normalizedLimit, 20)
             })
           )
         );

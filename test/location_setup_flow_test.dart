@@ -97,10 +97,18 @@ class _TrackingMosqueNotifier extends MosqueNotifier {
     required double longitude,
     double? radiusMiles,
     double? radiusKm,
-    int limit = 20,
+    int page = 1,
+    int limit = nearbyMosquesPageSize,
+    bool append = false,
   }) async {
     lastLatitude = latitude;
     lastLongitude = longitude;
+    updateNearbyPagination(
+      page: page,
+      limit: limit,
+      hasMore: false,
+      total: _mosques.length,
+    );
     state = AsyncData(_mosques);
     return _mosques;
   }

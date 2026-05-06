@@ -3,11 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/nearby_radius.dart';
 import '../core/api_error_mapper.dart';
-import '../data/auth_provider.dart';
 import '../data/mosque_provider.dart';
 import '../models/mosque_model.dart';
 import '../navigation/mosque_detail_route_args.dart';
-import '../navigation/app_startup.dart';
 import '../navigation/app_routes.dart';
 import '../services/location_preferences_service.dart';
 import '../theme/app_colors.dart';
@@ -52,7 +50,10 @@ class _MosqueListingState extends ConsumerState<MosqueListing> {
   Set<String> _classes = <String>{};
   Set<String> _events = <String>{};
   bool _requestedLoad = false;
-  bool _redirectingToLogin = false;
+  int _nearbyPage = 0;
+  bool _hasMoreNearby = false;
+  bool _isLoadingMoreNearby = false;
+  Object? _loadMoreError;
 
   @override
   void initState() {
@@ -80,7 +81,7 @@ class _MosqueListingState extends ConsumerState<MosqueListing> {
     });
   }
 
-  Future<void> _loadMosques() async {
+  Future<void> _loadMosques({bool append = false}) async {
     if (!_requestedLoad && mounted) {
       setState(() => _requestedLoad = true);
     } else {
@@ -89,7 +90,32 @@ class _MosqueListingState extends ConsumerState<MosqueListing> {
 
     final savedLocation = _savedLocation;
     if (savedLocation?.hasCoordinates != true) {
+      if (mounted) {
+        setState(() {
+          _nearbyPage = 0;
+          _hasMoreNearby = false;
+          _isLoadingMoreNearby = false;
+          _loadMoreError = null;
+        });
+      }
       return;
+    }
+
+    final isAppending =
+        append && _nearbyPage > 0 && (_hasMoreNearby || _loadMoreError != null);
+    final nextPage = isAppending ? _nearbyPage + 1 : 1;
+    if (mounted) {
+      setState(() {
+        if (isAppending) {
+          _isLoadingMoreNearby = true;
+          _loadMoreError = null;
+        } else {
+          _nearbyPage = 0;
+          _hasMoreNearby = false;
+          _isLoadingMoreNearby = false;
+          _loadMoreError = null;
+        }
+      });
     }
 
     try {
@@ -97,16 +123,45 @@ class _MosqueListingState extends ConsumerState<MosqueListing> {
             latitude: savedLocation!.latitude!,
             longitude: savedLocation.longitude!,
             radiusMiles: _filterRadiusMiles,
+            page: nextPage,
+            limit: nearbyMosquesPageSize,
+            append: isAppending,
           );
+      final notifier = ref.read(mosqueProvider.notifier);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _nearbyPage = notifier.currentNearbyPage;
+        _hasMoreNearby = notifier.hasMoreNearby;
+        _isLoadingMoreNearby = false;
+        _loadMoreError = null;
+      });
     } catch (_) {
-      // Error UI is exposed through mosqueProvider.
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        if (isAppending) {
+          _isLoadingMoreNearby = false;
+          _loadMoreError = Object();
+          return;
+        }
+
+        _nearbyPage = 0;
+        _hasMoreNearby = false;
+        _isLoadingMoreNearby = false;
+        _loadMoreError = null;
+      });
     }
   }
 
-  void _redirectToLogin() {
-    if (_redirectingToLogin || !mounted) return;
-    _redirectingToLogin = true;
-    scheduleUnauthenticatedRedirect(context);
+  Future<void> _loadMoreMosques() async {
+    if (_isLoadingMoreNearby || (!_hasMoreNearby && _loadMoreError == null)) {
+      return;
+    }
+
+    await _loadMosques(append: true);
   }
 
   Future<void> _openFilters() async {
@@ -294,45 +349,67 @@ class _MosqueListingState extends ConsumerState<MosqueListing> {
     final events = result['events'];
     final nextRadiusMiles =
         radius is num ? radius.toDouble() : defaultNearbyRadiusMiles;
-    final radiusChanged = nextRadiusMiles != _filterRadiusMiles;
+    final nextSortBy = result['sortBy'] as String? ?? _defaultSortBy;
+    final nextSect = result['sect'] as String? ?? _defaultSect;
+    final nextAsrTime = result['asarTime'] as String? ?? _defaultAsrTime;
+    final nextReviewRating =
+        result['reviewRating'] as String? ?? _defaultReviewRating;
+    final nextTiming = result['timing'] as String? ?? _defaultTiming;
+    final nextFacilities = facilities is List
+        ? facilities.whereType<String>().toSet()
+        : <String>{};
+    final nextClasses =
+        classes is List ? classes.whereType<String>().toSet() : <String>{};
+    final nextEvents =
+        events is List ? events.whereType<String>().toSet() : <String>{};
+    final filtersChanged = nextRadiusMiles != _filterRadiusMiles ||
+        nextSortBy != _sortBy ||
+        nextSect != _sect ||
+        nextAsrTime != _asrTime ||
+        nextReviewRating != _reviewRating ||
+        nextTiming != _timing ||
+        !_setEquals(nextFacilities, _facilities) ||
+        !_setEquals(nextClasses, _classes) ||
+        !_setEquals(nextEvents, _events);
 
     setState(() {
-      _sortBy = result['sortBy'] as String? ?? _defaultSortBy;
-      _sect = result['sect'] as String? ?? _defaultSect;
-      _asrTime = result['asarTime'] as String? ?? _defaultAsrTime;
-      _reviewRating = result['reviewRating'] as String? ?? _defaultReviewRating;
-      _timing = result['timing'] as String? ?? _defaultTiming;
-      _facilities = facilities is List
-          ? facilities.whereType<String>().toSet()
-          : <String>{};
-      _classes =
-          classes is List ? classes.whereType<String>().toSet() : <String>{};
-      _events =
-          events is List ? events.whereType<String>().toSet() : <String>{};
+      _sortBy = nextSortBy;
+      _sect = nextSect;
+      _asrTime = nextAsrTime;
+      _reviewRating = nextReviewRating;
+      _timing = nextTiming;
+      _facilities = nextFacilities;
+      _classes = nextClasses;
+      _events = nextEvents;
       _filterRadiusMiles = nextRadiusMiles;
     });
 
-    if (radiusChanged && _savedLocation?.hasCoordinates == true) {
+    if (filtersChanged && _savedLocation?.hasCoordinates == true) {
       await _loadMosques();
     }
   }
 
+  bool _setEquals(Set<String> left, Set<String> right) {
+    if (left.length != right.length) {
+      return false;
+    }
+
+    for (final value in left) {
+      if (!right.contains(value)) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
   @override
   Widget build(BuildContext context) {
-    final authState = ref.watch(authProvider);
     final mosqueState = ref.watch(mosqueProvider);
     final hasSavedCoordinates = _savedLocation?.hasCoordinates == true;
     final hasSavedLabel = _savedLocation?.label.trim().isNotEmpty == true;
 
-    if (authState.hasValue && authState.valueOrNull == null) {
-      _redirectToLogin();
-      return const Scaffold(
-        backgroundColor: AppColors.background,
-        body: LoadingState(label: 'Redirecting...'),
-      );
-    }
-
-    if (authState.isLoading || !_requestedLoad) {
+    if (!_requestedLoad) {
       return const Scaffold(
         backgroundColor: Color(0xFFF6F7F4),
         body: LoadingState(label: 'Loading nearby mosques...'),
@@ -370,11 +447,14 @@ class _MosqueListingState extends ConsumerState<MosqueListing> {
         ),
       ),
       data: (mosques) {
-        final source =
-            widget.initialMosques.isNotEmpty ? widget.initialMosques : mosques;
+        final source = mosques.isNotEmpty || widget.initialMosques.isEmpty
+            ? mosques
+            : widget.initialMosques;
         final filteredMosques = _applyFilters(source);
+        final showLoadMoreControl =
+            _hasMoreNearby || _isLoadingMoreNearby || _loadMoreError != null;
 
-        if (filteredMosques.isEmpty) {
+        if (filteredMosques.isEmpty && !showLoadMoreControl) {
           return _MosqueListingScaffold(
             location: _location,
             onBack: _goBack,
@@ -406,10 +486,20 @@ class _MosqueListingState extends ConsumerState<MosqueListing> {
               const SizedBox(height: 12),
               Expanded(
                 child: ListView.separated(
-                  itemCount: filteredMosques.length,
+                  itemCount:
+                      filteredMosques.length + (showLoadMoreControl ? 1 : 0),
                   padding: const EdgeInsets.only(bottom: 20),
                   separatorBuilder: (_, __) => const SizedBox(height: 10),
                   itemBuilder: (context, index) {
+                    if (index == filteredMosques.length) {
+                      return _LoadMoreMosquesFooter(
+                        isLoading: _isLoadingMoreNearby,
+                        showButton: _hasMoreNearby,
+                        hasError: _loadMoreError != null,
+                        onPressed: _loadMoreMosques,
+                      );
+                    }
+
                     final mosque = filteredMosques[index];
                     return _MosqueCard(
                       mosque: mosque,
@@ -423,6 +513,86 @@ class _MosqueListingState extends ConsumerState<MosqueListing> {
           ),
         );
       },
+    );
+  }
+}
+
+class _LoadMoreMosquesFooter extends StatelessWidget {
+  const _LoadMoreMosquesFooter({
+    required this.isLoading,
+    required this.showButton,
+    required this.hasError,
+    required this.onPressed,
+  });
+
+  final bool isLoading;
+  final bool showButton;
+  final bool hasError;
+  final Future<void> Function() onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final canTap = !isLoading && (showButton || hasError);
+    if (!canTap && !isLoading) {
+      return const SizedBox.shrink();
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 4, 4, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (hasError)
+            const Padding(
+              padding: EdgeInsets.only(bottom: 10),
+              child: Text(
+                'We could not load the next nearby batch. You can retry without losing the current list.',
+                style: TextStyle(
+                  fontFamily: 'Figtree',
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  color: AppColors.secondaryText,
+                  height: 1.35,
+                ),
+              ),
+            ),
+          OutlinedButton(
+            onPressed: canTap ? () => onPressed() : null,
+            style: OutlinedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+              side: const BorderSide(color: Color(0xFF8A8A86)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+              foregroundColor: AppColors.primaryText,
+              textStyle: const TextStyle(
+                fontFamily: 'Figtree',
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            child: isLoading
+                ? const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                      SizedBox(width: 12),
+                      Text('Loading more mosques...'),
+                    ],
+                  )
+                : Text(
+                    hasError
+                        ? 'Retry loading more mosques'
+                        : 'Load more mosques',
+                  ),
+          ),
+        ],
+      ),
     );
   }
 }

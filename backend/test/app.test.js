@@ -329,7 +329,7 @@ test(
           assert.equal(latitude, 27.9506);
           assert.equal(longitude, -82.4572);
           assert.equal(radiusKm, 5);
-          assert.equal(limit, 2);
+          assert.equal(limit, 2000);
           return [
             {
               id: 'google:place-1',
@@ -378,6 +378,10 @@ test(
       assert.equal(response.statusCode, 200);
       const body = response.json();
       assert.equal(body.error, null);
+      assert.equal(body.meta.pagination.page, 1);
+      assert.equal(body.meta.pagination.limit, 2);
+      assert.equal(body.meta.pagination.total, 2);
+      assert.equal(body.meta.pagination.hasMore, false);
       assert.deepEqual(
         body.data.items.map((item) => [item.id, item.sourceType]),
         [
@@ -458,10 +462,12 @@ test(
       });
 
       assert.equal(response.statusCode, 200);
-      const items = response.json().data.items;
+      const payload = response.json();
+      const items = payload.data.items;
       assert.equal(items.length, 1);
       assert.equal(items[0].id, 'db-mosque-1');
       assert.equal(items[0].sourceType, 'believer_db');
+      assert.equal(payload.meta.pagination.hasMore, false);
     } finally {
       pool.query = originalQuery;
       await app.close();
@@ -601,10 +607,13 @@ test(
       });
 
       assert.equal(response.statusCode, 200);
+      const payload = response.json();
       assert.deepEqual(
-        response.json().data.items.map((item) => item.id),
+        payload.data.items.map((item) => item.id),
         ['db-mosque-1', 'google:place-near', 'google:place-far']
       );
+      assert.equal(payload.meta.pagination.total, 3);
+      assert.equal(payload.meta.pagination.hasMore, false);
     } finally {
       pool.query = originalQuery;
       await app.close();
@@ -643,10 +652,9 @@ test(
       });
 
       assert.equal(response.statusCode, 200);
-      assert.deepEqual(
-        response.json().data.items.map((item) => item.id),
-        ['db-mosque-1']
-      );
+      const payload = response.json();
+      assert.deepEqual(payload.data.items.map((item) => item.id), ['db-mosque-1']);
+      assert.equal(payload.meta.pagination.hasMore, false);
     } finally {
       pool.query = originalQuery;
       await app.close();
@@ -726,6 +734,214 @@ test(
         seenRadiusKm,
         cases.map(({ radiusKm }) => radiusKm)
       );
+    } finally {
+      pool.query = originalQuery;
+      await app.close();
+    }
+  }
+);
+
+test(
+  'GET /api/v1/mosques/nearby paginates merged DB and Google mosques without duplicates across pages',
+  { concurrency: false },
+  async () => {
+    const originalQuery = pool.query;
+    pool.query = async () => ({
+      rows: [
+        createNearbyRow({
+          id: 'db-mosque-1',
+          name: 'Alpha Mosque',
+          latitude: 27.9506,
+          longitude: -82.4572
+        }),
+        createNearbyRow({
+          id: 'db-mosque-2',
+          name: 'Bravo Mosque',
+          latitude: 27.952,
+          longitude: -82.4572
+        })
+      ]
+    });
+
+    const app = buildApp({
+      locationLookupService: {
+        async discoverNearbyMosques() {
+          return [
+            {
+              id: 'google:place-duplicate',
+              externalPlaceId: 'place-duplicate',
+              name: 'Alpha Mosque Masjid',
+              addressLine: '15 Mercy Road',
+              city: 'Jacksonville',
+              state: 'FL',
+              country: 'US',
+              postalCode: '',
+              latitude: 27.95065,
+              longitude: -82.45725,
+              imageUrl: '',
+              imageUrls: [],
+              sect: 'Community',
+              contactName: '',
+              contactPhone: '',
+              contactEmail: '',
+              websiteUrl: '',
+              duhrTime: '',
+              asrTime: '',
+              facilities: [],
+              isVerified: false,
+              averageRating: 0,
+              totalReviews: 0,
+              classes: [],
+              events: [],
+              classTags: [],
+              eventTags: [],
+              distanceKm: 0.02,
+              isBookmarked: false,
+              canEdit: false,
+              sourceType: 'google_listed'
+            },
+            {
+              id: 'google:place-1',
+              externalPlaceId: 'place-1',
+              name: 'Charlie Mosque',
+              addressLine: '25 Faith Avenue',
+              city: 'Jacksonville',
+              state: 'FL',
+              country: 'US',
+              postalCode: '',
+              latitude: 27.953,
+              longitude: -82.4572,
+              imageUrl: '',
+              imageUrls: [],
+              sect: 'Community',
+              contactName: '',
+              contactPhone: '',
+              contactEmail: '',
+              websiteUrl: '',
+              duhrTime: '',
+              asrTime: '',
+              facilities: [],
+              isVerified: false,
+              averageRating: 0,
+              totalReviews: 0,
+              classes: [],
+              events: [],
+              classTags: [],
+              eventTags: [],
+              distanceKm: 0.27,
+              isBookmarked: false,
+              canEdit: false,
+              sourceType: 'google_listed'
+            },
+            {
+              id: 'google:place-2',
+              externalPlaceId: 'place-2',
+              name: 'Delta Mosque',
+              addressLine: '40 Crescent Lane',
+              city: 'Jacksonville',
+              state: 'FL',
+              country: 'US',
+              postalCode: '',
+              latitude: 27.955,
+              longitude: -82.4572,
+              imageUrl: '',
+              imageUrls: [],
+              sect: 'Community',
+              contactName: '',
+              contactPhone: '',
+              contactEmail: '',
+              websiteUrl: '',
+              duhrTime: '',
+              asrTime: '',
+              facilities: [],
+              isVerified: false,
+              averageRating: 0,
+              totalReviews: 0,
+              classes: [],
+              events: [],
+              classTags: [],
+              eventTags: [],
+              distanceKm: 0.49,
+              isBookmarked: false,
+              canEdit: false,
+              sourceType: 'google_listed'
+            }
+          ];
+        }
+      }
+    });
+
+    try {
+      const firstPage = await app.inject({
+        method: 'GET',
+        url: '/api/v1/mosques/nearby?latitude=27.9506&longitude=-82.4572&radius=5&page=1&limit=2'
+      });
+      const secondPage = await app.inject({
+        method: 'GET',
+        url: '/api/v1/mosques/nearby?latitude=27.9506&longitude=-82.4572&radius=5&page=2&limit=2'
+      });
+
+      assert.equal(firstPage.statusCode, 200);
+      assert.equal(secondPage.statusCode, 200);
+
+      const firstPayload = firstPage.json();
+      const secondPayload = secondPage.json();
+      assert.deepEqual(
+        firstPayload.data.items.map((item) => item.id),
+        ['db-mosque-1', 'db-mosque-2']
+      );
+      assert.deepEqual(
+        secondPayload.data.items.map((item) => item.id),
+        ['google:place-1', 'google:place-2']
+      );
+      assert.equal(firstPayload.meta.pagination.total, 4);
+      assert.equal(firstPayload.meta.pagination.hasMore, true);
+      assert.equal(secondPayload.meta.pagination.total, 4);
+      assert.equal(secondPayload.meta.pagination.hasMore, false);
+    } finally {
+      pool.query = originalQuery;
+      await app.close();
+    }
+  }
+);
+
+test(
+  'GET /api/v1/mosques/nearby keeps wide-radius responses batched instead of returning every mosque at once',
+  { concurrency: false },
+  async () => {
+    const originalQuery = pool.query;
+    pool.query = async () => ({
+      rows: Array.from({ length: 25 }, (_, index) =>
+        createNearbyRow({
+          id: `db-mosque-${index + 1}`,
+          name: `Wide Radius Mosque ${index + 1}`,
+          latitude: 27.9506 + (index * 0.001),
+          longitude: -82.4572
+        })
+      )
+    });
+
+    const app = buildApp({
+      locationLookupService: {
+        async discoverNearbyMosques() {
+          return [];
+        }
+      }
+    });
+
+    try {
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/v1/mosques/nearby?latitude=27.9506&longitude=-82.4572&radius=160.9344&page=1&limit=20'
+      });
+
+      assert.equal(response.statusCode, 200);
+      const payload = response.json();
+      assert.equal(payload.data.items.length, 20);
+      assert.equal(payload.meta.pagination.page, 1);
+      assert.equal(payload.meta.pagination.limit, 20);
+      assert.equal(payload.meta.pagination.total, 25);
+      assert.equal(payload.meta.pagination.hasMore, true);
     } finally {
       pool.query = originalQuery;
       await app.close();

@@ -17,11 +17,24 @@ class MockMosqueNotifier extends MosqueNotifier {
     required double longitude,
     double? radiusMiles,
     double? radiusKm,
-    int limit = 20,
+    int page = 1,
+    int limit = nearbyMosquesPageSize,
+    bool append = false,
   }) async {
-    final items = MockData.mosques.take(limit).toList(growable: false);
-    state = AsyncData(items);
-    return items;
+    final start = (page - 1) * limit;
+    final items =
+        MockData.mosques.skip(start).take(limit).toList(growable: false);
+    final visibleItems = append
+        ? [...(state.valueOrNull ?? const <MosqueModel>[]), ...items]
+        : items;
+    updateNearbyPagination(
+      page: page,
+      limit: limit,
+      hasMore: start + items.length < MockData.mosques.length,
+      total: MockData.mosques.length,
+    );
+    state = AsyncData(visibleItems);
+    return visibleItems;
   }
 }
 

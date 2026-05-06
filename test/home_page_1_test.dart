@@ -281,8 +281,16 @@ class _CoverImageMosqueNotifier extends MosqueNotifier {
     required double longitude,
     double? radiusMiles,
     double? radiusKm,
-    int limit = 20,
+    int page = 1,
+    int limit = nearbyMosquesPageSize,
+    bool append = false,
   }) async {
+    updateNearbyPagination(
+      page: page,
+      limit: limit,
+      hasMore: false,
+      total: mosques.length,
+    );
     state = AsyncData(mosques);
     return mosques;
   }
@@ -294,6 +302,8 @@ class _TrackingMosqueNotifier extends MosqueNotifier {
   static double? lastLongitude;
   static double? lastRadiusMiles;
   static double? lastRadiusKm;
+  static int? lastPage;
+  static int? lastLimit;
 
   @override
   Future<List<MosqueModel>> build() async {
@@ -306,12 +316,22 @@ class _TrackingMosqueNotifier extends MosqueNotifier {
     required double longitude,
     double? radiusMiles,
     double? radiusKm,
-    int limit = 20,
+    int page = 1,
+    int limit = nearbyMosquesPageSize,
+    bool append = false,
   }) async {
     lastLatitude = latitude;
     lastLongitude = longitude;
     lastRadiusMiles = radiusMiles;
     lastRadiusKm = radiusKm;
+    lastPage = page;
+    lastLimit = limit;
+    updateNearbyPagination(
+      page: page,
+      limit: limit,
+      hasMore: false,
+      total: mosques.length,
+    );
     state = AsyncData(mosques);
     return mosques;
   }
@@ -1265,6 +1285,8 @@ void main() {
     _TrackingMosqueNotifier.lastLongitude = null;
     _TrackingMosqueNotifier.lastRadiusMiles = null;
     _TrackingMosqueNotifier.lastRadiusKm = null;
+    _TrackingMosqueNotifier.lastPage = null;
+    _TrackingMosqueNotifier.lastLimit = null;
     final service = _FakeMosqueService(
       nowProvider: () => fixedNow,
     );
@@ -1300,6 +1322,8 @@ void main() {
       defaultNearbyRadiusMiles,
     );
     expect(_TrackingMosqueNotifier.lastRadiusKm, isNull);
+    expect(_TrackingMosqueNotifier.lastPage, 1);
+    expect(_TrackingMosqueNotifier.lastLimit, nearbyMosquesPageSize);
     expect(service.prayerTimeRequests, isEmpty);
     expect(locationTimingsService.requests, isNotEmpty);
     expect(locationTimingsService.requests.single['latitude'], 27.9506);

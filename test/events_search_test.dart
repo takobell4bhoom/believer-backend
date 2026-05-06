@@ -23,10 +23,25 @@ class _EmptyMosqueNotifier extends MosqueNotifier {
     required double longitude,
     double? radiusMiles,
     double? radiusKm,
-    int limit = 20,
+    int page = 1,
+    int limit = nearbyMosquesPageSize,
+    bool append = false,
   }) async {
+    updateNearbyPagination(
+      page: page,
+      limit: limit,
+      hasMore: false,
+      total: 0,
+    );
     state = const AsyncData(<MosqueModel>[]);
     return const <MosqueModel>[];
+  }
+}
+
+class _SignedOutAuthNotifier extends AuthNotifier {
+  @override
+  Future<AuthSession?> build() async {
+    return null;
   }
 }
 
@@ -38,7 +53,7 @@ void main() {
 
     final container = ProviderContainer(
       overrides: [
-        authProvider.overrideWith(MockAuthNotifier.new),
+        authProvider.overrideWith(_SignedOutAuthNotifier.new),
         mosqueProvider.overrideWith(_EmptyMosqueNotifier.new),
       ],
     );
@@ -53,6 +68,8 @@ void main() {
                   args: ModalRoute.of(context)!.settings.arguments!
                       as EventSearchListingRouteArgs,
                 ),
+            AppRoutes.locationSetup: (_) =>
+                const Scaffold(body: Text('Location setup stub')),
             AppRoutes.mosqueSearch: (_) =>
                 const Scaffold(body: Text('Mosque search stub')),
             AppRoutes.map: (_) =>
@@ -92,6 +109,7 @@ void main() {
       ),
       findsOneWidget,
     );
+    expect(find.text('Redirecting...'), findsNothing);
 
     Navigator.of(tester.element(find.byType(EventSearchListing))).pop();
     await tester.pumpAndSettle();
@@ -99,9 +117,9 @@ void main() {
     await tester.tap(find.text('Location unavailable'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Map stub'), findsOneWidget);
+    expect(find.text('Location setup stub'), findsOneWidget);
 
-    Navigator.of(tester.element(find.text('Map stub'))).pop();
+    Navigator.of(tester.element(find.text('Location setup stub'))).pop();
     await tester.pumpAndSettle();
 
     await tester.tap(find.byIcon(Icons.menu));
@@ -121,7 +139,7 @@ void main() {
 
     final container = ProviderContainer(
       overrides: [
-        authProvider.overrideWith(MockAuthNotifier.new),
+        authProvider.overrideWith(_SignedOutAuthNotifier.new),
         mosqueProvider.overrideWith(_EmptyMosqueNotifier.new),
       ],
     );
@@ -136,6 +154,8 @@ void main() {
                   args: ModalRoute.of(context)!.settings.arguments!
                       as EventSearchListingRouteArgs,
                 ),
+            AppRoutes.locationSetup: (_) =>
+                const Scaffold(body: Text('Location setup stub')),
             AppRoutes.mosqueSearch: (_) =>
                 const Scaffold(body: Text('Mosque search stub')),
             AppRoutes.map: (_) =>

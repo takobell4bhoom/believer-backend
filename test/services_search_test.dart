@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:believer/data/auth_provider.dart';
 import 'package:believer/features/business_registration/business_registration_flow_controller.dart';
 import 'package:believer/features/business_registration/business_registration_models.dart';
 import 'package:believer/features/business_registration/business_registration_service.dart';
+import 'package:believer/navigation/app_routes.dart';
 import 'package:believer/screens/business_registration_basic/business_registration_basic_models.dart';
 import 'package:believer/screens/business_registration_contact/business_registration_contact_model.dart';
 import 'package:believer/models/service.dart';
@@ -108,6 +110,23 @@ class _LoggedInAuthNotifier extends AuthNotifier {
         role: 'community',
       ),
     );
+  }
+}
+
+class _SignedOutAuthNotifier extends AuthNotifier {
+  @override
+  Future<AuthSession?> build() async {
+    return null;
+  }
+}
+
+class _RecordingNavigatorObserver extends NavigatorObserver {
+  final List<String?> pushedRouteNames = <String?>[];
+
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    pushedRouteNames.add(route.settings.name);
+    super.didPush(route, previousRoute);
   }
 }
 
@@ -358,6 +377,50 @@ void main() {
     );
     expect(find.text('Run a business like this?'), findsOneWidget);
     expect(find.text('Sign in to register'), findsOneWidget);
+  });
+
+  testWidgets(
+      'services search keeps public results visible and sends guests to login for registration',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final fakeService = _FakeServicesSearchService();
+    final observer = _RecordingNavigatorObserver();
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          authProvider.overrideWith(_SignedOutAuthNotifier.new),
+        ],
+        child: MaterialApp(
+          navigatorObservers: [observer],
+          routes: {
+            AppRoutes.login: (_) => const Scaffold(body: Text('Login stub')),
+          },
+          home: ServicesSearch(
+            servicesSearchService: fakeService,
+          ),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    expect(find.text('Fresh Tandoor'), findsOneWidget);
+    expect(find.text('Sign in to register'), findsOneWidget);
+
+    tester
+        .widget<InkWell>(
+          find
+              .ancestor(
+                of: find.text('Run a business like this?'),
+                matching: find.byType(InkWell),
+              )
+              .first,
+        )
+        .onTap!();
+    await tester.pumpAndSettle();
+
+    expect(observer.pushedRouteNames, contains(AppRoutes.login));
   });
 
   testWidgets('services search keeps empty categories honest when browsing',
